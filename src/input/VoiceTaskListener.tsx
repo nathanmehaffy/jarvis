@@ -29,7 +29,7 @@ export function VoiceTaskListener() {
   const callStartBufferLengthRef = useRef(0);
   const lastBufferAppendAtRef = useRef<number>(0);
 
-  const MIN_SPACING_MS = 2000; // ~30 calls/min evenly spaced
+  const MIN_SPACING_MS = 3000; // ~20 calls/min evenly spaced
   const MIN_DEBOUNCE_MS = 300; // slight coalescing of bursts
 
   const cleanOld = useCallback((timestamps: number[]): number[] => {
@@ -129,7 +129,7 @@ export function VoiceTaskListener() {
 
     const now = Date.now();
     const recent = cleanOld(apiCallTimestampsRef.current);
-    const capWait = recent.length >= 30 ? (60000 - (now - recent[0])) : 0;
+    const capWait = recent.length >= 20 ? (60000 - (now - recent[0])) : 0;
     const spacingWait = recent.length > 0 ? Math.max(0, (recent[recent.length - 1] + MIN_SPACING_MS) - now) : 0;
     let waitMs = Math.max(capWait, spacingWait, MIN_DEBOUNCE_MS);
 
@@ -148,7 +148,7 @@ export function VoiceTaskListener() {
     const now = Date.now();
     const recent = cleanOld(apiCallTimestampsRef.current);
 
-    if (recent.length >= 30) {
+    if (recent.length >= 20) {
       const wait = 60000 - (now - recent[0]);
       if (wait > 0) scheduleTimer(wait);
       return;

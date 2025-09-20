@@ -55,6 +55,21 @@ export const AVAILABLE_TOOLS: Tool[] = [
     }
   },
   {
+    name: 'edit_window',
+    description: 'Edits an existing window: rename title, set/append/prepend/clear content.',
+    parameters: {
+      type: 'object',
+      properties: {
+        windowId: { type: 'string', description: 'Target window id (optional if selector used)' },
+        selector: { type: 'string', description: 'newest | active | oldest' },
+        title: { type: 'string', description: 'New title (omit to keep current)' },
+        content: { type: 'string', description: 'Text to set/append/prepend' },
+        mode: { type: 'string', description: 'set | append | prepend | clear', enum: ['set','append','prepend','clear'] }
+      },
+      required: []
+    }
+  },
+  {
     name: 'close_window',
     description: 'Closes an existing window by its ID. Use this when the user wants to close, dismiss, or hide a specific window.',
     parameters: {
@@ -145,6 +160,32 @@ export const AVAILABLE_TOOLS: Tool[] = [
         title: { type: 'string', description: 'Optional window title' },
         width: { type: 'number', description: 'Optional window width in px' },
         height: { type: 'number', description: 'Optional window height in px' }
+      },
+      required: ['url']
+    }
+  },
+  {
+    name: 'open_search_result',
+    description: 'Opens one of the last shown search results in a webview (supports "first/second/N").',
+    parameters: {
+      type: 'object',
+      properties: {
+        index: { type: 'number', description: '1-based index of the result to open (default 1)' },
+        url: { type: 'string', description: 'Direct URL to open (overrides index lookup)' },
+        title: { type: 'string', description: 'Optional window title' }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'summarize_article',
+    description: 'Reads the given URL server-side and generates a concise bullet summary and notes.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Article URL to read (will use reader mode)' },
+        windowId: { type: 'string', description: 'Optional target window id for notes; default opens new' },
+        maxBullets: { type: 'number', description: 'Max bullets in summary (default 8)' }
       },
       required: ['url']
     }

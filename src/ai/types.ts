@@ -43,9 +43,24 @@ export interface OpenWindowParams {
   context: WindowContext;
 }
 
+export interface OpenWebviewParams {
+  url: string;
+  title?: string;
+  width?: number;
+  height?: number;
+}
+
 export interface CloseWindowParams {
   windowId?: string; // direct id when known
   selector?: 'newest' | 'latest' | 'oldest' | 'active' | 'all'; // semantic selector
+}
+
+export interface EditWindowParams {
+  windowId?: string;
+  selector?: 'newest' | 'active' | 'oldest';
+  title?: string;
+  content?: string;
+  mode?: 'set' | 'append' | 'prepend' | 'clear';
 }
 
 export interface CerebrasRequest {
@@ -106,6 +121,12 @@ export interface WebSearchParams {
   query: string;
   resultCount?: number;
   displayMode?: 'summary' | 'links' | 'full' | 'auto';
+}
+
+export interface SummarizeArticleParams {
+  url: string;
+  windowId?: string;
+  maxBullets?: number;
 }
 
 export interface SearchResult {

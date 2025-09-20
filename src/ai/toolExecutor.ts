@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Task, OpenWindowParams, CloseWindowParams, WebSearchParams, CreateGroupParams, AssignGroupParams } from './types';
+import { Task, OpenWindowParams, CloseWindowParams, WebSearchParams, CreateGroupParams, AssignGroupParams, SummarizeArticleParams, EditWindowParams } from './types';
 import { eventBus } from '@/lib/eventBus';
 import { windowRegistry } from './windowRegistry';
-import { GeminiSearchClient } from './geminiSearchClient';
 
 export interface ExecutionResult {
   taskId: string;
@@ -13,15 +12,8 @@ export interface ExecutionResult {
 }
 
 export class ToolExecutor {
-  private geminiSearchClient!: GeminiSearchClient;
-
-  constructor() {
-    try {
-      this.geminiSearchClient = new GeminiSearchClient();
-    } catch (error) {
-      console.warn('[ToolExecutor] Gemini search not available:', error);
-    }
-  }
+  // Note: all web search now routes through server API; no client Gemini usage
+  constructor() {}
   async executeTasks(tasks: Task[]): Promise<ExecutionResult[]> {
     eventBus.emit('ai:task_queue_updated', tasks);
     const results: ExecutionResult[] = [];
@@ -75,9 +67,15 @@ export class ToolExecutor {
         case 'assign_group':
           result = await this.executeAssignGroup(task);
           break;
+        case 'edit_window':
+          result = await this.executeEditWindow(task);
+          break;
 
         case 'open_search_result':
           result = await this.executeOpenSearchResult(task);
+          break;
+        case 'summarize_article':
+          result = await this.executeSummarizeArticle(task);
           break;
         
         default:
@@ -449,11 +447,61 @@ Found ${searchResults.length} result${searchResults.length === 1 ? '' : 's'}`;
     return result;
   }
 
+  private async executeSummarizeArticle(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as SummarizeArticleParams;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'summarize_article', params });
+
+    if (!params.url) throw new Error('summarize_article requires url');
+
+    // Fetch reader content from server
+    const resp = await fetch('/api/fetch-article', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: params.url })
+    });
+    if (!resp.ok) throw new Error(`Reader HTTP ${resp.status}`);
+    const article = await resp.json();
+
+    const maxBullets = Math.max(3, Math.min(20, params.maxBullets || 8));
+
+    // Simple summarization heuristic (client-side) if Gemini not desired here: first N sentences
+    const sentences = String(article.textContent || '').split(/(?<=[.!?])\s+/).filter(Boolean);
+    const bullets = sentences.slice(0, maxBullets).map(s => `- ${s}`);
+
+    const content = `Summary of: ${article.title || params.url}\n\n${bullets.join('\n')}\n\nSource: ${params.url}`;
+
+    const windowId = this.generateWindowId();
+    const windowData = {
+      id: windowId,
+      type: 'notes',
+      title: article.title ? `${article.title} — Notes` : 'Article Notes',
+      content,
+      position: { x: 180, y: 180 },
+      size: { width: 500, height: 400 },
+      context: { title: article.title || 'Notes', content, type: 'notes' },
+      timestamp: Date.now()
+    };
+    eventBus.emit('ui:open_window', windowData);
+    eventBus.emit('window:opened', windowData);
+
+    const result = { taskId: task.id, success: true, result: { windowId, url: params.url }, timestamp: Date.now() };
+    eventBus.emit('ai:tool_call_completed', { task, tool: 'summarize_article', result });
+    return result;
+  }
+
   private async executeOpenSearchResult(task: Task): Promise<ExecutionResult> {
     const params = task.parameters as { index?: number; url?: string; title?: string };
     eventBus.emit('ai:tool_call_started', { task, tool: 'open_search_result', params });
 
-    const openUrl = params.url;
+    const decodeDdg = (u: string) => {
+      const m = u.match(/uddg=([^&]+)/);
+      if (m) {
+        try { return decodeURIComponent(m[1]); } catch {}
+      }
+      return u;
+    };
+
+    const openUrl = params.url ? decodeDdg(params.url) : undefined;
     if (openUrl && typeof openUrl === 'string') {
       return this.executeOpenWebView({
         ...task,
@@ -462,18 +510,27 @@ Found ${searchResults.length} result${searchResults.length === 1 ? '' : 's'}`;
       });
     }
 
-    // If no URL given, try to open the first recent search result from the last web_search call result summary
-    // As a simple UX, we will look for the last window of type 'search-results' and open the Nth link via regex
+    // If no URL given, try to open from the last search-results window's stored metadata first,
+    // falling back to parsing links from content if needed.
     try {
       const reg: any = windowRegistry as any;
       const all = reg.getAll ? reg.getAll() : [];
       const lastSearch = [...all].reverse().find((w: any) => w?.type === 'search-results');
       if (!lastSearch) throw new Error('No recent search results found');
 
-      const content: string = lastSearch?.meta?.content || '';
-      const urls = Array.from(content.matchAll(/https?:\/\/[^\s\)]+/g)).map(m => m[0]);
       const idx = Math.max(1, params.index || 1) - 1;
-      const url = urls[idx];
+      // Prefer structured results stored in window context metadata
+      const structured: any[] = lastSearch?.meta?.context?.metadata?.results || [];
+      let url: string | undefined;
+      if (Array.isArray(structured) && structured[idx] && typeof structured[idx].url === 'string') {
+        url = decodeDdg(structured[idx].url);
+      }
+      // Fallback: parse from rendered content
+      if (!url) {
+        const content: string = (lastSearch?.content || (lastSearch?.meta?.content || '')) as string;
+        const urls = Array.from(content.matchAll(/https?:\/\/[^\s\)]+/g)).map(m => decodeDdg(m[0]));
+        url = urls[idx];
+      }
       if (!url) throw new Error('Requested result not found');
 
       return this.executeOpenWebView({
@@ -621,6 +678,32 @@ Found ${searchResults.length} result${searchResults.length === 1 ? '' : 's'}`;
 
   private generateWindowId(): string {
     return `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private async executeEditWindow(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as EditWindowParams;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'edit_window', params });
+
+    let targetWindowId = params.windowId;
+    if (!targetWindowId && params.selector) {
+      if (params.selector === 'newest') targetWindowId = windowRegistry.getNewest()?.id;
+      else if (params.selector === 'active') {
+        const reg: any = windowRegistry as any;
+        targetWindowId = reg.getActive ? reg.getActive()?.id : undefined;
+      } else if (params.selector === 'oldest') targetWindowId = windowRegistry.getOldest()?.id;
+    }
+    if (!targetWindowId) throw new Error('No window found to edit');
+
+    const mode = params.mode || 'set';
+    eventBus.emit('ui:update_window', {
+      windowId: targetWindowId,
+      title: typeof params.title === 'string' ? params.title : undefined,
+      contentUpdate: typeof params.content === 'string' || mode === 'clear' ? { mode, text: params.content || '' } : undefined
+    });
+
+    const result = { taskId: task.id, success: true, result: { windowId: targetWindowId }, timestamp: Date.now() };
+    eventBus.emit('ai:tool_call_completed', { task, tool: 'edit_window', result });
+    return result;
   }
 }
 

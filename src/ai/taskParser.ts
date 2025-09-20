@@ -365,6 +365,73 @@ export class TaskParser {
       }
     }
 
+    // Edit window intents: rename/set/append/prepend/clear content
+    if (/(rename|retitle|change\s+title)/i.test(lowerText)) {
+      const m = text.match(/(?:to|as)\s+"([^"]+)"|(?:to|as)\s+'([^']+)'|(?:to|as)\s+(.+)$/i);
+      const newTitle = m ? (m[1] || m[2] || m[3] || '').trim() : '';
+      if (newTitle) {
+        tasks.push({
+          id: this.generateTaskId(),
+          tool: 'edit_window',
+          parameters: { selector: 'active', title: newTitle },
+          description: `Rename active window to ${newTitle}`
+        });
+        return tasks;
+      }
+    }
+
+    if (/(append|add\s+to|add\s+into)/i.test(lowerText)) {
+      const m = text.match(/(?:append|add(?:\s+to|\s+into)?)\s+"([^"]+)"|(?:append|add(?:\s+to|\s+into)?)\s+'([^']+)'|(?:append|add(?:\s+to|\s+into)?)\s+(.+)$/i);
+      const txt = m ? (m[1] || m[2] || m[3] || '').trim() : '';
+      if (txt) {
+        tasks.push({
+          id: this.generateTaskId(),
+          tool: 'edit_window',
+          parameters: { selector: 'active', content: txt, mode: 'append' },
+          description: `Append to active window`
+        });
+        return tasks;
+      }
+    }
+
+    if (/(set|replace)\s+(content|text)/i.test(lowerText)) {
+      const m = text.match(/(?:set|replace)\s+(?:content|text)\s+to\s+"([^"]+)"|(?:set|replace)\s+(?:content|text)\s+to\s+'([^']+)'|(?:set|replace)\s+(?:content|text)\s+to\s+(.+)$/i);
+      const txt = m ? (m[1] || m[2] || m[3] || '').trim() : '';
+      if (txt) {
+        tasks.push({
+          id: this.generateTaskId(),
+          tool: 'edit_window',
+          parameters: { selector: 'active', content: txt, mode: 'set' },
+          description: `Set content of active window`
+        });
+        return tasks;
+      }
+    }
+
+    if (/(prepend)/i.test(lowerText)) {
+      const m = text.match(/prepend\s+"([^"]+)"|prepend\s+'([^']+)'|prepend\s+(.+)$/i);
+      const txt = m ? (m[1] || m[2] || m[3] || '').trim() : '';
+      if (txt) {
+        tasks.push({
+          id: this.generateTaskId(),
+          tool: 'edit_window',
+          parameters: { selector: 'active', content: txt, mode: 'prepend' },
+          description: `Prepend to active window`
+        });
+        return tasks;
+      }
+    }
+
+    if (/(clear|empty|wipe)\s+(window|content|text)/i.test(lowerText)) {
+      tasks.push({
+        id: this.generateTaskId(),
+        tool: 'edit_window',
+        parameters: { selector: 'active', mode: 'clear' },
+        description: `Clear active window`
+      });
+      return tasks;
+    }
+
     // Group management commands
     if (/(create|make|new)\s+group/i.test(lowerText)) {
       const groupMatch = text.match(/(?:create|make|new)\s+group\s+(?:called\s+)?["']?([^"']+?)["']?(?:\s*(?:,|and)?\s*(?:make\s+it\s+)?(?:the\s+)?(?:color|with\s+color)\s+([a-zA-Z#]+))?/i);
