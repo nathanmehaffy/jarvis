@@ -1,259 +1,234 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { eventBus } from '@/lib/eventBus';
-import VoiceTaskListener from '@/input/VoiceTaskListener';
+import { useEffect, useRef } from 'react';
 import { aiManager } from '@/ai';
+import { WindowManager, WindowManagerRef } from './components/windowManager';
+import { InputWindow } from './components/inputWindow';
+import { AIWindow } from './components/aiWindow';
+import { UserNotes } from './components/userNotes';
+import { SystemOutput } from './components/systemOutput';
+import { GraphWindow } from './components/graphWindow';
+import { BarGraphWindow } from './components/barGraphWindow';
+import { PieChartWindow } from './components/pieChart';
+import { AnimatedBackground } from './components/background';
+import { ImageDropZone } from './components/imageDropZone';
+import { ImageViewer } from './components/imageViewer';
 
-type TaskItem = { id: string; text: string; timestamp: number; source: string };
-
-type WindowData = {
-  id: string;
-  type: string;
-  title: string;
-  content: string;
-  position?: { x: number; y: number };
-  size?: { width: number; height: number };
-  context?: any;
-  timestamp: number;
-};
+//
 
 export function MainUI() {
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [debug, setDebug] = useState<any>({});
-  const [windows, setWindows] = useState<WindowData[]>([]);
-  const [logs, setLogs] = useState<{ level: 'info' | 'error'; message: string; data?: any; t: number }[]>([]);
-  const [manual, setManual] = useState('');
-
-  // Initialize AI worker once
+  const windowManagerRef = useRef<WindowManagerRef>(null);
   useEffect(() => {
     aiManager.initialize();
   }, []);
-
-  // Bridge input tasks -> AI and keep local list
-  useEffect(() => {
-    const unsubTasks = eventBus.on('input:tasks', (data: { tasks: TaskItem[] }) => {
-      setTasks(prev => [...data.tasks, ...prev].slice(0, 100));
-      // Forward each task text to AI for parsing/execution
-      data.tasks.forEach(task => aiManager.processTextCommand(task.text));
+  const openInputWindow = () => {
+    windowManagerRef.current?.openWindow({
+      id: 'input-window',
+      title: 'Input Manager',
+      component: InputWindow,
+      x: 100,
+      y: 100,
+      width: 400,
+      height: 300
     });
+  };
 
-    const unsubDebug = eventBus.on('input:voice_debug', (data: any) => {
-      setDebug(data);
+  const openAIWindow = () => {
+    windowManagerRef.current?.openWindow({
+      id: 'ai-window',
+      title: 'AI Manager',
+      component: AIWindow,
+      x: 200,
+      y: 150,
+      width: 400,
+      height: 300
     });
+  };
 
-    return () => {
-      unsubTasks();
-      unsubDebug();
-    };
-  }, []);
+  const openUserNotesWindow = () => {
+    windowManagerRef.current?.openWindow({
+      id: 'user-notes-window',
+      title: 'Personal Notes',
+      component: UserNotes,
+      x: 300,
+      y: 200,
+      width: 500,
+      height: 400
+    });
+  };
 
-  // Listen to AI and UI events
-  useEffect(() => {
-    const unsubs: Array<() => void> = [];
+  const openSystemOutputWindow = () => {
+    windowManagerRef.current?.openWindow({
+      id: 'system-output-window',
+      title: 'System Output',
+      component: SystemOutput,
+      x: 350,
+      y: 250,
+      width: 600,
+      height: 450
+    });
+  };
 
-    unsubs.push(
-      eventBus.on('ai:text_command_processed', (data: any) => {
-        setLogs(prev => [{ level: 'info', message: 'Text command processed', data, t: Date.now() }, ...prev].slice(0, 200));
-      })
-    );
-    unsubs.push(
-      eventBus.on('ai:ai_request_processed', (data: any) => {
-        setLogs(prev => [{ level: 'info', message: 'AI request processed', data, t: Date.now() }, ...prev].slice(0, 200));
-      })
-    );
-    unsubs.push(
-      eventBus.on('ai:ai_response_generated', (data: any) => {
-        setLogs(prev => [{ level: 'info', message: 'AI response generated', data, t: Date.now() }, ...prev].slice(0, 200));
-      })
-    );
-    unsubs.push(
-      eventBus.on('ai:ai_analysis_complete', (data: any) => {
-        setLogs(prev => [{ level: 'info', message: 'AI analysis complete', data, t: Date.now() }, ...prev].slice(0, 200));
-      })
-    );
-    unsubs.push(
-      eventBus.on('ai:error', (error: any) => {
-        setLogs(prev => [{ level: 'error', message: 'AI error', data: error, t: Date.now() }, ...prev].slice(0, 200));
-      })
-    );
+  const openImageViewerWindow = (imageUrl: string, imageName: string) => {
+    const windowId = `image-viewer-${Date.now()}`;
+    windowManagerRef.current?.openWindow({
+      id: windowId,
+      title: `Image: ${imageName}`,
+      component: () => <ImageViewer imageUrl={imageUrl} imageName={imageName} />,
+      x: 400,
+      y: 300,
+      width: 700,
+      height: 500
+    });
+  };
 
-    // Window open/close from tool executor
-    unsubs.push(
-      eventBus.on('ui:open_window', (data: WindowData) => {
-        setWindows(prev => [data, ...prev].slice(0, 100));
-      })
-    );
-    unsubs.push(
-      eventBus.on('ui:close_window', (data: { windowId: string }) => {
-        setWindows(prev => prev.filter(w => w.id !== data.windowId));
-      })
-    );
+  const handleImageUpload = (imageUrl: string, imageName: string) => {
+    openImageViewerWindow(imageUrl, imageName);
+  };
 
-    // Mirror general window events to logs
-    unsubs.push(
-      eventBus.on('window:opened', (data: any) => {
-        setLogs(prev => [{ level: 'info', message: `Window opened (${data?.type || 'window'})`, data, t: Date.now() }, ...prev].slice(0, 200));
-      })
-    );
-    unsubs.push(
-      eventBus.on('window:closed', (data: any) => {
-        setLogs(prev => [{ level: 'info', message: 'Window closed', data, t: Date.now() }, ...prev].slice(0, 200));
-      })
-    );
+  const openGraphWindow = () => {
+    windowManagerRef.current?.openWindow({
+      id: 'graph-window',
+      title: 'Line Graph',
+      component: GraphWindow,
+      x: 400,
+      y: 100,
+      width: 750,
+      height: 550
+    });
+  };
 
-    return () => {
-      unsubs.forEach(u => u());
-    };
-  }, []);
+  const openBarGraphWindow = () => {
+    windowManagerRef.current?.openWindow({
+      id: 'bar-graph-window',
+      title: 'Bar Graph',
+      component: BarGraphWindow,
+      x: 450,
+      y: 150,
+      width: 750,
+      height: 550
+    });
+  };
 
-  const statusColor = debug?.status === 'processing' ? 'bg-yellow-500' : debug?.status === 'listening' ? 'bg-green-500' : debug?.status === 'error' ? 'bg-red-500' : 'bg-gray-400';
+  const openPieChartWindow = () => {
+    windowManagerRef.current?.openWindow({
+      id: 'pie-chart-window',
+      title: 'Pie Chart',
+      component: PieChartWindow,
+      x: 500,
+      y: 200,
+      width: 800,
+      height: 600
+    });
+  };
+
+  const openPreloadedImageWindow = () => {
+    const preloadedImageUrl = 'https://picsum.photos/600/400?random=1';
+    const imageName = 'Sample Image';
+    openImageViewerWindow(preloadedImageUrl, imageName);
+  };
 
   return (
-    <div className="min-h-screen p-8">
-      <VoiceTaskListener />
-
-      {!debug?.isSupported && (
-        <div className="mb-4 p-4 rounded bg-red-50 text-red-700">
-          Speech recognition not supported in this browser.
-        </div>
-      )}
-
-      {!debug?.isOnline && (
-        <div className="mb-4 p-4 rounded bg-yellow-50 text-yellow-800">
-          Network disconnected
-        </div>
-      )}
-
-      <h1 className="text-2xl font-bold mb-6">Jarvis Debug UI</h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="p-4 border rounded">
-          <div className="flex items-center gap-2">
-            <div className={`w-3 h-3 rounded-full ${statusColor}`} />
-            <span className="font-semibold">Status:</span>
-            <span>{debug?.status ?? 'idle'}</span>
-          </div>
-          {debug?.lastError && (
-            <div className="text-red-600 text-sm mt-2">{debug.lastError}</div>
-          )}
-        </div>
-        <div className="p-4 border rounded">
-          <div className="font-semibold">API usage (last minute)</div>
-          <div className="text-2xl">{debug?.apiCallsUsedLastMinute ?? 0} / 30</div>
-          {typeof debug?.nextCallInMs === 'number' && (
-            <div className="text-sm text-gray-600">Next call in ~{Math.ceil((debug.nextCallInMs as number)/100)/10}s</div>
-          )}
-        </div>
-        <div className="p-4 border rounded">
-          <div className="font-semibold">Buffer length</div>
-          <div className="text-2xl">{debug?.bufferLength ?? 0}</div>
-        </div>
-        <div className="p-4 border rounded">
-          <div className="font-semibold mb-2">Manual command</div>
-          <div className="flex gap-2">
-            <input
-              value={manual}
-              onChange={(e) => setManual(e.target.value)}
-              placeholder="Type a command (e.g., open a sticky note)"
-              className="flex-1 px-2 py-1 border rounded bg-transparent"
-            />
-            <button
-              onClick={() => {
-                if (manual.trim()) {
-                  aiManager.processTextCommand(manual.trim());
-                  setLogs(prev => [{ level: 'info', message: 'Manual command sent', data: { text: manual.trim() }, t: Date.now() }, ...prev].slice(0, 200));
-                  setManual('');
-                }
-              }}
-              className="px-3 py-1 border rounded hover:bg-gray-50"
-            >Send</button>
+    <div className="min-h-screen">
+      <WindowManager ref={windowManagerRef}>
+        <AnimatedBackground />
+        
+        {/* Image Drop Zone - Right Side */}
+        <div className="absolute top-6 right-6 z-10">
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-6 text-white shadow-2xl mb-6 w-64">
+            <h2 className="text-lg font-semibold mb-4 text-center break-words">Image Upload</h2>
+            <ImageDropZone onImageUpload={handleImageUpload} />
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="p-4 border rounded">
-          <h2 className="text-lg font-semibold mb-3">Emitted Tasks</h2>
-          {tasks.length === 0 ? (
-            <div className="text-gray-500">Speak to create tasks...</div>
-          ) : (
-            <ul className="space-y-2">
-              {tasks.map(t => (
-                <li key={t.id} className="p-3 bg-gray-50 rounded border">
-                  <div className="flex items-center justify-between">
-                    <span>{t.text}</span>
-                    <span className="text-xs text-gray-500">{new Date(t.timestamp).toLocaleTimeString()}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="p-4 border rounded">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold">AI Logs</h2>
-            <button className="text-sm text-gray-600 hover:underline" onClick={() => setLogs([])}>Clear</button>
-          </div>
-          {logs.length === 0 ? (
-            <div className="text-gray-500">No AI events yet...</div>
-          ) : (
-            <ul className="space-y-2 max-h-72 overflow-auto">
-              {logs.map((l, i) => (
-                <li key={i} className={`p-2 rounded border ${l.level === 'error' ? 'bg-red-50 border-red-200' : 'bg-gray-50'}`}>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className={l.level === 'error' ? 'text-red-700 font-medium' : 'font-medium'}>{l.message}</span>
-                    <span className="text-xs text-gray-500">{new Date(l.t).toLocaleTimeString()}</span>
-                  </div>
-                  {l.data && (
-                    <pre className="whitespace-pre-wrap break-words text-xs mt-1 text-gray-700">{JSON.stringify(l.data, null, 2)}</pre>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-6 p-4 border rounded relative min-h-[300px]">
-        <h2 className="text-lg font-semibold mb-3">Windows</h2>
-        <div className="relative" style={{ minHeight: 240 }}>
-          {windows.length === 0 ? (
-            <div className="text-gray-500">Windows opened by AI will appear here.</div>
-          ) : (
-            <div className="relative">
-              {windows.map(win => {
-                const left = win.position?.x ?? 40;
-                const top = win.position?.y ?? 40;
-                const width = win.size?.width ?? 300;
-                const height = win.size?.height ?? 200;
-                return (
-                  <div key={win.id} className="absolute border rounded shadow bg-white/90 backdrop-blur p-0 overflow-hidden" style={{ left, top, width, height }}>
-                    <div className="flex items-center justify-between px-3 py-2 border-b bg-gray-100">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs uppercase tracking-wide text-gray-600">{win.type}</span>
-                        <span className="font-semibold">{win.title}</span>
-                      </div>
-                      <button
-                        className="text-sm text-gray-600 hover:text-black"
-                        onClick={() => {
-                          eventBus.emit('ui:close_window', { windowId: win.id, timestamp: Date.now() });
-                          eventBus.emit('window:closed', { windowId: win.id, timestamp: Date.now() });
-                        }}
-                        aria-label={`Close ${win.title}`}
-                      >✕</button>
-                    </div>
-                    <div className="p-3 text-sm h-full overflow-auto">
-                      {win.content || (win.context?.content ?? '')}
-                    </div>
-                  </div>
-                );
-              })}
+        {/* Desktop Content */}
+        <div className="absolute top-6 left-6 z-10">
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 text-white shadow-2xl">
+            <div className="flex items-center mb-6">
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-xl mr-3 flex items-center justify-center">
+                <div className="w-4 h-4 bg-white rounded-full opacity-80"></div>
+              </div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
+                Jarvis Desktop
+              </h1>
             </div>
-          )}
+            <div className="space-y-3">
+              <button
+                onClick={openInputWindow}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-blue-500/60 to-indigo-600/60 hover:from-blue-500/80 hover:to-indigo-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-blue-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Input Window</span>
+                </div>
+              </button>
+              <button
+                onClick={openAIWindow}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-emerald-500/60 to-green-600/60 hover:from-emerald-500/80 hover:to-green-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-emerald-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open AI Window</span>
+                </div>
+              </button>
+              <button
+                onClick={openUserNotesWindow}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-blue-500/60 to-indigo-600/60 hover:from-blue-500/80 hover:to-indigo-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-blue-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Personal Notes</span>
+                </div>
+              </button>
+              <button
+                onClick={openSystemOutputWindow}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-green-500/60 to-emerald-600/60 hover:from-green-500/80 hover:to-emerald-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-green-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open System Output</span>
+                </div>
+              </button>
+              <button
+                onClick={openGraphWindow}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-purple-500/60 to-pink-600/60 hover:from-purple-500/80 hover:to-pink-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-purple-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Line Graph</span>
+                </div>
+              </button>
+              <button
+                onClick={openBarGraphWindow}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-orange-500/60 to-red-600/60 hover:from-orange-500/80 hover:to-red-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-orange-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Bar Graph</span>
+                </div>
+              </button>
+              <button
+                onClick={openPieChartWindow}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-pink-500/60 to-purple-600/60 hover:from-pink-500/80 hover:to-purple-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-pink-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Pie Chart</span>
+                </div>
+              </button>
+              <button
+                onClick={openPreloadedImageWindow}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-teal-500/60 to-cyan-600/60 hover:from-teal-500/80 hover:to-cyan-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-teal-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Sample Image</span>
+                </div>
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      </WindowManager>
     </div>
   );
 }
