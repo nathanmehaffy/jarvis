@@ -31,6 +31,7 @@ export class SpeechTranscriptionService {
   private isListening = false;
   private isSupported = false;
   private isInitialized = false;
+  private lastFinalCumulative = '';
 
   constructor() {
     // Don't check support in constructor - do it during initialization
@@ -94,17 +95,15 @@ export class SpeechTranscriptionService {
 
     this.recognition.onstart = () => {
       this.isListening = true;
+      // Reset cumulative tracker at the start of each session
+      this.lastFinalCumulative = '';
       eventBus.emit('speech:started');
     };
 
     this.recognition.onend = () => {
+      // Mark as not listening; restart is coordinated by the hook
       this.isListening = false;
       eventBus.emit('speech:ended');
-
-      // Auto-restart if we want continuous listening
-      if (this.isListening) {
-        setTimeout(() => this.start(), 100);
-      }
     };
 
     this.recognition.onresult = (event: SpeechRecognitionEvent) => {
@@ -122,13 +121,26 @@ export class SpeechTranscriptionService {
         }
       }
 
+      // Compute delta of newly finalized portion relative to previous cumulative
+      let finalDelta = '';
+      if (fullTranscript.startsWith(this.lastFinalCumulative)) {
+        finalDelta = fullTranscript.slice(this.lastFinalCumulative.length);
+      } else {
+        // Fallback: find common prefix length and take the suffix as delta
+        const commonLength = this.getCommonPrefixLength(this.lastFinalCumulative, fullTranscript);
+        finalDelta = fullTranscript.slice(commonLength);
+      }
+
+      // Update cumulative tracker
+      this.lastFinalCumulative = fullTranscript;
+
       // Always emit the most recent interim result for continuous stream
-      const currentText = fullTranscript + lastInterim;
+      const currentText = (fullTranscript + lastInterim).trim();
 
       eventBus.emit('speech:transcript', {
-        final: fullTranscript,
+        final: finalDelta,
         interim: lastInterim,
-        fullText: currentText.trim(),
+        fullText: currentText,
         timestamp: Date.now()
       });
 
@@ -154,19 +166,10 @@ export class SpeechTranscriptionService {
         eventBus.emit('speech:error', event.error);
       }
 
-      // Auto-restart on all errors except fatal ones, with shorter delay for no-speech
-      if (event.error === 'no-speech') {
-        setTimeout(() => {
-          if (this.isListening) {
-            this.start();
-          }
-        }, 100); // Faster restart for silence
-      } else if (event.error === 'audio-capture' || event.error === 'network') {
-        setTimeout(() => {
-          if (this.isListening) {
-            this.start();
-          }
-        }, 1000);
+      // Handle fatal errors by stopping completely
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        this.isListening = false;
+        return;
       }
     };
   }
@@ -214,6 +217,15 @@ export class SpeechTranscriptionService {
       this.isInitialized = true;
     }
     return this.isSupported;
+  }
+
+  private getCommonPrefixLength(a: string, b: string): number {
+    const minLen = Math.min(a.length, b.length);
+    let i = 0;
+    while (i < minLen && a.charCodeAt(i) === b.charCodeAt(i)) {
+      i++;
+    }
+    return i;
   }
 }
 

@@ -28,13 +28,13 @@ export interface UseSpeechTranscriptionOptions {
 export interface UseSpeechTranscriptionReturn {
   isListening: boolean;
   isSupported: boolean;
-  currentTranscript: string;
+  accumulatedTranscript: string;
   interimTranscript: string;
   fullText: string;
-  lastWord: string;
   start: () => boolean;
   stop: () => void;
   toggle: () => void;
+  clear: () => void;
 }
 
 export function useSpeechTranscription(
@@ -50,10 +50,9 @@ export function useSpeechTranscription(
 
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
-  const [currentTranscript, setCurrentTranscript] = useState('');
+  const [accumulatedTranscript, setAccumulatedTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
   const [fullText, setFullText] = useState('');
-  const [lastWord, setLastWord] = useState('');
 
   const isInitialized = useRef(false);
   const shouldRestart = useRef(continuous);
@@ -76,16 +75,24 @@ export function useSpeechTranscription(
     const unsubscribers = [
       eventBus.on('speech:transcript', (data: TranscriptData) => {
         if (data.final && data.final.trim()) {
-          setCurrentTranscript(data.final.trim());
+          setAccumulatedTranscript(prev => {
+            const newText = prev ? prev + ' ' + data.final.trim() : data.final.trim();
+            const trimmed = newText.length > 10000 ? newText.slice(-10000) : newText;
+            setFullText(trimmed + (data.interim ? ' ' + data.interim : ''));
+            return trimmed;
+          });
+        } else {
+          setAccumulatedTranscript(prev => {
+            setFullText(prev + (data.interim ? ' ' + data.interim : ''));
+            return prev;
+          });
         }
         setInterimTranscript(data.interim);
-        setFullText(data.fullText);
 
         onTranscript?.(data);
       }),
 
       eventBus.on('speech:word', (data: WordData) => {
-        setLastWord(data.word);
         onWord?.(data);
       }),
 
@@ -109,8 +116,14 @@ export function useSpeechTranscription(
 
         // Don't change listening state for no-speech errors since we want continuous listening
         if (error !== 'no-speech') {
-          setIsListening(false);
           onError?.(error);
+        }
+
+        // Handle fatal errors by stopping restart
+        if (error === 'not-allowed' || error === 'service-not-allowed') {
+          shouldRestart.current = false;
+          setIsListening(false);
+          return;
         }
 
         // Auto-restart on certain errors if continuous
@@ -157,7 +170,12 @@ export function useSpeechTranscription(
     shouldRestart.current = false;
     speechService.stop();
     setInterimTranscript('');
-    setLastWord('');
+  }, []);
+
+  const clear = useCallback((): void => {
+    setAccumulatedTranscript('');
+    setInterimTranscript('');
+    setFullText('');
   }, []);
 
   const toggle = useCallback((): void => {
@@ -171,12 +189,12 @@ export function useSpeechTranscription(
   return {
     isListening,
     isSupported,
-    currentTranscript,
+    accumulatedTranscript,
     interimTranscript,
     fullText,
-    lastWord,
     start,
     stop,
-    toggle
+    toggle,
+    clear
   };
 }
