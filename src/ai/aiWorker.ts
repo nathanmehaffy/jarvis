@@ -1,10 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { TaskParser } from './taskParser';
+import { ToolExecutor } from './toolExecutor';
+
+const taskParser = new TaskParser();
+const toolExecutor = new ToolExecutor();
+
 self.addEventListener('message', (event) => {
   const { type, data } = event.data;
   
   switch (type) {
     case 'PROCESS_AI_REQUEST':
       processAIRequest(data);
+      break;
+    
+    case 'PROCESS_TEXT_COMMAND':
+      processTextCommand(data);
       break;
     
     case 'GENERATE_RESPONSE':
@@ -20,8 +30,70 @@ self.addEventListener('message', (event) => {
   }
 });
 
+async function processTextCommand(textInput: any) {
+  try {
+    const text = typeof textInput === 'string' ? textInput : textInput.text || textInput.command || '';
+    
+    if (!text) {
+      throw new Error('No text input provided');
+    }
+    
+    console.log(`[AI Worker] Processing text command: "${text}"`);
+    
+    // Parse text to tasks using Cerebras
+    const parseResult = await taskParser.parseTextToTasks(text);
+    
+    if (!parseResult.success) {
+      throw new Error(parseResult.error || 'Failed to parse text to tasks');
+    }
+    
+    console.log(`[AI Worker] Parsed ${parseResult.tasks.length} tasks:`, parseResult.tasks);
+    
+    // Execute the tasks
+    const executionResults = await toolExecutor.executeTasks(parseResult.tasks);
+    
+    const response = {
+      id: generateId(),
+      success: true,
+      originalText: text,
+      tasks: parseResult.tasks,
+      executionResults: executionResults,
+      processingTime: parseResult.timestamp,
+      timestamp: Date.now()
+    };
+    
+    self.postMessage({
+      type: 'TEXT_COMMAND_PROCESSED',
+      data: response
+    });
+    
+  } catch (error) {
+    console.error('[AI Worker] Error processing text command:', error);
+    
+    self.postMessage({
+      type: 'AI_ERROR',
+      data: { 
+        error: error instanceof Error ? error.message : String(error), 
+        textInput,
+        type: 'text_command_error'
+      }
+    });
+  }
+}
+
 async function processAIRequest(request: any) {
   try {
+    // Legacy support for existing AI request format
+    // Try to extract text from various possible fields
+    const text = request.text || request.command || request.input || request.prompt?.text;
+    
+    if (text) {
+      // Delegate to the new text command processor
+      await processTextCommand(text);
+      return;
+    }
+    
+    // Fallback to old behavior for non-text requests
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     const response = {
@@ -45,6 +117,16 @@ async function processAIRequest(request: any) {
 
 async function generateResponse(prompt: any) {
   try {
+    // Check if this is a text command that should be processed differently
+    const text = prompt.text || prompt.command || prompt.prompt;
+    
+    if (text && (typeof text === 'string')) {
+      // Delegate to text command processor
+      await processTextCommand(text);
+      return;
+    }
+    
+    // Fallback to simple response generation
     await new Promise(resolve => setTimeout(resolve, 1500));
     
     const response = {

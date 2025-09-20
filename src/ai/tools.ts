@@ -1,0 +1,74 @@
+import { Tool } from './types';
+
+export const AVAILABLE_TOOLS: Tool[] = [
+  {
+    name: 'open_window',
+    description: 'Opens a new popup window with specified type and context. Use this when the user wants to create, open, show, or display a window.',
+    parameters: {
+      type: 'object',
+      properties: {
+        windowType: {
+          type: 'string',
+          description: 'The type of window to open (e.g., notification, dialog, settings, sticky-note, general)'
+        },
+        context: {
+          type: 'object',
+          description: 'Context information for the window',
+          properties: {
+            title: {
+              type: 'string',
+              description: 'Window title to display'
+            },
+            content: {
+              type: 'string',
+              description: 'Primary text/content of the window'
+            },
+            type: {
+              type: 'string',
+              description: 'Repeat of window type for UI context (notification, dialog, settings, sticky-note, general)'
+            },
+            position: {
+              type: 'object',
+              description: 'Optional x/y position of the window',
+              properties: {
+                x: { type: 'number', description: 'X coordinate in pixels' },
+                y: { type: 'number', description: 'Y coordinate in pixels' }
+              }
+            },
+            size: {
+              type: 'object',
+              description: 'Optional width/height of the window',
+              properties: {
+                width: { type: 'number', description: 'Window width in pixels' },
+                height: { type: 'number', description: 'Window height in pixels' }
+              }
+            }
+          }
+        }
+      },
+      required: ['windowType', 'context']
+    }
+  },
+  {
+    name: 'close_window',
+    description: 'Closes an existing window by its ID. Use this when the user wants to close, dismiss, or hide a specific window.',
+    parameters: {
+      type: 'object',
+      properties: {
+        windowId: {
+          type: 'string',
+          description: 'The unique identifier of the window to close'
+        }
+      },
+      required: ['windowId']
+    }
+  }
+];
+
+export function getToolByName(name: string): Tool | undefined {
+  return AVAILABLE_TOOLS.find(tool => tool.name === name);
+}
+
+export function getAllToolNames(): string[] {
+  return AVAILABLE_TOOLS.map(tool => tool.name);
+}

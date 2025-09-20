@@ -41,6 +41,18 @@ export class AIManager {
     });
   }
 
+  processTextCommand(text: string): void {
+    if (!this.worker) {
+      console.warn('AI worker not initialized');
+      return;
+    }
+
+    this.worker.postMessage({
+      type: 'PROCESS_TEXT_COMMAND',
+      data: text
+    });
+  }
+
   generateResponse(prompt: any): void {
     if (!this.worker) {
       console.warn('AI worker not initialized');
