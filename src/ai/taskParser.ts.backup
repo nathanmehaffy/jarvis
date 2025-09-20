@@ -11,7 +11,6 @@ export class TaskParser {
   }
 
   async parseTextToTasks(text: string, uiContext: any = {}): Promise<AIProcessingResult> {
-    console.log(`[TaskParser] Processing: ${text}`);
     try {
       const startTime = Date.now();
       console.log('[TaskParser] parseTextToTasks called', {
@@ -69,27 +68,6 @@ export class TaskParser {
       // Final normalization pass
       tasks = tasks.map(t => this.normalizeEducationIntent(text, t));
 
-      // Guardrail: only allow web_search if the user explicitly asked to search
-      const hasSearchKeyword = /\b(search|look up|find information|google|bing)\b/i.test(text);
-      tasks = tasks.filter(t => t.tool !== 'web_search' || hasSearchKeyword);
-
-      // Force-correct: if the user asked to open a result but the model returned a generic window,
-      // replace/augment with open_search_result so UI opens the article.
-      const openResultIndex = this.detectOpenResultIndex(text);
-      if (openResultIndex != null) {
-        // Drop any generic First Link windows the model may have created
-        tasks = tasks.filter(t => !(t.tool === 'open_window' && /first\s+link/i.test(String((t as any)?.parameters?.context?.title || ''))));
-        // Only add if not already present
-        if (!tasks.some(t => t.tool === 'open_search_result')) {
-          tasks.unshift({
-            id: this.generateTaskId(),
-            tool: 'open_search_result',
-            parameters: { index: openResultIndex },
-            description: `Open search result #${openResultIndex}`
-          });
-        }
-      }
-
       // If no tool calls were generated, try to handle simple cases with fallback parsing
       if (tasks.length === 0) {
         const fallbackTasks = this.fallbackParsing(text);
@@ -119,18 +97,6 @@ export class TaskParser {
         timestamp: Date.now()
       };
     }
-  }
-
-  private detectOpenResultIndex(text: string): number | null {
-    const lower = text.toLowerCase();
-    // quick patterns: first/second/third/fourth/fifth
-    const wordToIndex: Record<string, number> = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5 };
-    const word = lower.match(/\b(first|second|third|fourth|fifth)\b/);
-    if (word) return wordToIndex[word[1]];
-    const num = lower.match(/result\s*(\d+)/);
-    if (num) return Math.max(1, parseInt(num[1], 10));
-    if (/\b(open|read|show|load|click)\b\s+(it|this|that)/i.test(lower)) return 1; // default
-    return null;
   }
 
   private detectCloseCommand(text: string): Task[] {
@@ -189,85 +155,9 @@ export class TaskParser {
   }
 
   private fallbackParsing(text: string): Task[] {
-    console.log(`[TaskParser] Fallback parsing: ${text}`);
     const tasks: Task[] = [];
     const lowerText = text.toLowerCase();
     
-    // Search commands (handle first to avoid creating a generic open window)
-    if (lowerText.includes('search') || lowerText.includes('look up') || lowerText.includes('find information') || /article/i.test(lowerText)) {
-      let searchQuery = '';
-      let resultCount = 5;
-      let displayMode = 'auto';
-
-      const searchPatterns = [
-        /search\s+for\s+(.+?)$/i,
-        /look\s+up\s+(.+?)$/i,
-        /find\s+information\s+(?:about|on)\s+(.+?)$/i,
-        /(?:search|look\s+up|find)\s+["']([^"']+)["']/i,
-        /(?:search|google|bing)\s*[:.]?\s*(.+?)$/i
-      ];
-
-      for (const pattern of searchPatterns) {
-        const match = text.match(pattern);
-        if (match && match[1]) {
-          searchQuery = match[1].trim();
-          break;
-        }
-      }
-
-      const countMatch = text.match(/(\d+)\s+(?:results?|top|first)/i);
-      if (countMatch) {
-        const n = parseInt(countMatch[1], 10);
-        if (!isNaN(n) && n > 0 && n <= 10) resultCount = n;
-      }
-
-      if (searchQuery) {
-        tasks.push({
-          id: this.generateTaskId(),
-          tool: 'web_search',
-          parameters: {
-            query: searchQuery,
-            resultCount: resultCount,
-            displayMode: displayMode
-          },
-          description: `Search for: ${searchQuery}`
-        });
-
-        // Fallback: if no tasks and it mentions search/article, force a search task
-        if (tasks.length === 0 && (/\b(search|look up|find information|article)\b/i.test(text))) {
-          console.log(`[TaskParser] Forcing search for: ${text}`);
-          tasks.push({
-            id: this.generateTaskId(),
-            tool: 'web_search',
-            parameters: { query: text, resultCount: 5, displayMode: 'links' },
-            description: `Search for: ${text}`
-          });
-        }
-
-        return tasks; // Do not create a generic open window
-      }
-    }
-
-    // Open specific result commands
-    if (/\b(open|read|show|load|click)\b\s+(it|this|that|first|second|third|fourth|fifth|result\s*\d+|the\s+first\s+(link|result))/i.test(lowerText)) {
-      let index = 1;
-      const indexMap: Record<string, number> = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5 };
-      const idxWord = (lowerText.match(/(first|second|third|fourth|fifth)/)?.[1]);
-      if (idxWord) index = indexMap[idxWord] || 1;
-      const idxNum = (lowerText.match(/result\s*(\d+)/)?.[1]);
-      if (idxNum) index = Math.max(1, parseInt(idxNum, 10));
-      // Pragmatic default for "open it/this/that"
-      if (/(\bit\b|\bthis\b|\bthat\b)/i.test(lowerText) && !idxWord && !idxNum) index = 1;
-
-      tasks.push({
-        id: this.generateTaskId(),
-        tool: 'open_search_result',
-        parameters: { index },
-        description: `Open search result #${index}`
-      });
-      return tasks;
-    }
-
     // Open/create commands
     if (lowerText.includes('open') || lowerText.includes('create') || lowerText.includes('show') || lowerText.includes('start')) {
       let windowType = 'general';
@@ -364,47 +254,18 @@ export class TaskParser {
         });
       }
     }
-
-    // Group management commands
-    if (/(create|make|new)\s+group/i.test(lowerText)) {
-      const groupMatch = text.match(/(?:create|make|new)\s+group\s+(?:called\s+)?["']?([^"']+?)["']?(?:\s*(?:,|and)?\s*(?:make\s+it\s+)?(?:the\s+)?(?:color|with\s+color)\s+([a-zA-Z#]+))?/i);
-      if (groupMatch) {
-        const name = groupMatch[1].trim();
-        const color = groupMatch[2] || 'blue';
-        tasks.push({
-          id: this.generateTaskId(),
-          tool: 'create_group',
-          parameters: { name, color },
-          description: `Create group: ${name} (${color})`
-        });
-      }
-    }
-
-    if (lowerText.includes('move') && (lowerText.includes('to group') || lowerText.includes('group'))) {
-      const moveMatch = text.match(/move\s+(?:(?:this|the|current)\s+)?(?:window\s+)?(?:to\s+)?group\s+["']?([^"']+?)["']?/i);
-      if (moveMatch) {
-        const groupName = moveMatch[1].trim();
-        tasks.push({
-          id: this.generateTaskId(),
-          tool: 'assign_group',
-          parameters: { groupName, selector: 'newest' },
-          description: `Move window to group: ${groupName}`
-        });
-      }
-    }
     
     return tasks;
   }
 
   private extractTitle(text: string): string | null {
-    // Extract title ONLY when explicitly specified with keywords like 'titled', 'called', 'named'
-    // Do NOT extract quotes as titles - let content extraction handle those
+    // Extract title from patterns like 'open a "Title" window' or 'create window titled "Title"'
     const titlePatterns = [
-      /titled\s+["']?([^"']+?)["']?(?:\s+window|$)/i,
-      /called\s+["']?([^"']+?)["']?(?:\s+window|$)/i,
-      /named\s+["']?([^"']+?)["']?(?:\s+window|$)/i,
-      /title\s+["']?([^"']+?)["']?(?:\s+window|$)/i,
-      /with\s+title\s+["']?([^"']+?)["']?(?:\s+window|$)/i
+      /"([^"]+)"/,
+      /'([^']+)'/,
+      /titled\s+(.+?)(?:\s+window|$)/i,
+      /called\s+(.+?)(?:\s+window|$)/i,
+      /named\s+(.+?)(?:\s+window|$)/i
     ];
     
     for (const pattern of titlePatterns) {

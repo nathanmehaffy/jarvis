@@ -71,6 +71,83 @@ export const AVAILABLE_TOOLS: Tool[] = [
       },
       required: []
     }
+  },
+  {
+    name: 'web_search',
+    description: 'Performs web search using Gemini with grounding and displays results in a window. Use this when user wants to search for information online.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The search query to look up'
+        },
+        resultCount: {
+          type: 'number',
+          description: 'Number of results to return (1-10, default 5)'
+        },
+        displayMode: {
+          type: 'string',
+          description: 'How to display results: summary (single result with summary), links (multiple results with titles/links), full (single result with full content)',
+          enum: ['summary', 'links', 'full', 'auto']
+        }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'create_group',
+    description: 'Creates a new window group with a name and color for organizing windows',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Name of the group (e.g., Research, Work, Personal)'
+        },
+        color: {
+          type: 'string',
+          description: 'Color for the group banner (e.g., purple, blue, red, green, orange)'
+        }
+      },
+      required: ['name', 'color']
+    }
+  },
+  {
+    name: 'assign_group',
+    description: 'Assigns a window to a group or moves the current/newest window to a group',
+    parameters: {
+      type: 'object',
+      properties: {
+        windowId: {
+          type: 'string',
+          description: 'ID of the window to assign (optional, defaults to newest)'
+        },
+        groupName: {
+          type: 'string',
+          description: 'Name of the group to assign the window to'
+        },
+        selector: {
+          type: 'string',
+          description: 'Window selector if ID not provided (newest, active, all)'
+        }
+      },
+      required: ['groupName']
+    }
+  },
+  {
+    name: 'open_webview',
+    description: 'Opens a sandboxed webview (iframe) to display a URL inside a window.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'URL to load in the webview' },
+        title: { type: 'string', description: 'Optional window title' },
+        width: { type: 'number', description: 'Optional window width in px' },
+        height: { type: 'number', description: 'Optional window height in px' }
+      },
+      required: ['url']
+    }
   }
 ];
 

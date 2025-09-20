@@ -89,6 +89,32 @@ export interface CerebrasResponse {
   };
 }
 
+
+
+export interface CreateGroupParams {
+  name: string;
+  color: string;
+}
+
+export interface AssignGroupParams {
+  windowId?: string;
+  groupName: string;
+  selector?: 'newest' | 'active' | 'all';
+}
+
+export interface WebSearchParams {
+  query: string;
+  resultCount?: number;
+  displayMode?: 'summary' | 'links' | 'full' | 'auto';
+}
+
+export interface SearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+  content?: string;
+}
+
 export interface AIProcessingResult {
   success: boolean;
   tasks: Task[];

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { Window } from '../window';
-import { WindowData, WindowManagerState } from './windowManager.types';
+import { WindowData, WindowManagerState, WindowGroup } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
 
 interface WindowManagerProps {
@@ -11,6 +11,8 @@ interface WindowManagerProps {
 }
 
 export interface WindowManagerRef {
+  createGroup: (name: string, color: string) => void;
+  assignWindowToGroup: (windowId: string, groupName: string) => void;
   openWindow: (windowData: Omit<WindowData, 'isOpen' | 'isMinimized' | 'zIndex'>) => void;
   closeWindow: (windowId: string) => void;
   minimizeWindow: (windowId: string) => void;
@@ -19,6 +21,7 @@ export interface WindowManagerRef {
 
 export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>((props, ref) => {
   const { children, onWindowsChange } = props;
+  const [groups, setGroups] = useState<Record<string, WindowGroup>>({});
   const [state, setState] = useState<WindowManagerState>({
     windows: [],
     activeWindowId: null,
@@ -86,7 +89,29 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>((p
     } catch {}
   };
 
+  
+  const createGroup = (name: string, color: string) => {
+    setGroups(prev => ({
+      ...prev,
+      [name.toLowerCase()]: { name, color }
+    }));
+  };
+
+  const assignWindowToGroup = (windowId: string, groupName: string) => {
+    const group = groups[groupName.toLowerCase()];
+    if (!group) return;
+    
+    setState(prev => ({
+      ...prev,
+      windows: prev.windows.map(w =>
+        w.id === windowId ? { ...w, group } : w
+      )
+    }));
+  };
+
   useImperativeHandle(ref, () => ({
+    createGroup,
+    assignWindowToGroup,
     openWindow,
     closeWindow,
     minimizeWindow,
@@ -102,16 +127,46 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>((p
   // Listen for AI/UI events to open/close windows
   useEffect(() => {
     const unsubs = [
+      eventBus.on('window:create_group', (data: any) => {
+        if (data?.name && data?.color) {
+          createGroup(data.name, data.color);
+        }
+      }),
+      eventBus.on('window:assign_group', (data: any) => {
+        if (data?.windowId && data?.groupName) {
+          assignWindowToGroup(data.windowId, data.groupName);
+        }
+      }),
       eventBus.on('ui:open_window', (data: any) => {
+  console.log(`[WindowManager] ui:open_window:`, data);
         const id = data?.id || `win_${Date.now()}`;
-        const title = data?.title || 'Window';
+        const title = data?.title || 'General';
+        const urlForWebview = data?.context?.metadata?.url || data?.url;
         openWindow({
           id,
           title,
-          component: () => (
-            <div className="p-4 text-gray-800 text-sm whitespace-pre-wrap">{String(data?.content || '')}</div>
-          ),
+          component: () => {
+            if (urlForWebview) {
+              return (
+                <iframe
+                  src={String(urlForWebview)}
+                  className="w-full h-full border-0"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-navigation"
+                  referrerPolicy="no-referrer"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  loading="lazy"
+                  onLoad={(e) => console.log(`[WindowManager] Webview loaded: ${urlForWebview}`)}
+                  onError={(e) => console.error(`[WindowManager] Webview error for ${urlForWebview}:`, e)}
+                />
+              );
+            } else {
+              return (
+                <div className="p-4 text-gray-800 text-sm whitespace-pre-wrap">{String(data?.content || '')}</div>
+              );
+            }
+          },
           content: String(data?.content || ''),
+          group: data?.group && typeof data.group === 'object' ? { name: String(data.group.name || ''), color: String(data.group.color || '#6b7280') } as WindowGroup : undefined,
           x: data?.position?.x ?? 120,
           y: data?.position?.y ?? 120,
           width: data?.size?.width ?? 360,
