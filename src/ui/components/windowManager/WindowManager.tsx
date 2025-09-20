@@ -21,20 +21,189 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
     nextZIndex: 10
   });
 
-  const openWindow = (windowData: Omit<WindowData, 'isOpen' | 'zIndex'>) => {
-    setState(prev => ({
-      ...prev,
-      windows: [
-        ...prev.windows.filter(w => w.id !== windowData.id),
-        {
-          ...windowData,
-          isOpen: true,
-          zIndex: prev.nextZIndex
-        }
-      ],
-      activeWindowId: windowData.id,
-      nextZIndex: prev.nextZIndex + 1
+  const getOptimalPosition = (width: number, height: number, currentWindows: WindowData[]): { x: number; y: number } => {
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 1080;
+
+    const centerX = Math.max(0, (viewportWidth - width) / 2);
+    const centerY = Math.max(0, (viewportHeight - height) / 2);
+
+    if (currentWindows.length === 0) {
+      return { x: centerX, y: centerY };
+    }
+
+    const occupiedAreas = currentWindows.map(w => ({
+      x1: w.x,
+      y1: w.y,
+      x2: w.x + w.width,
+      y2: w.y + w.height
     }));
+
+
+    const margin = 20;
+
+    const isPositionFree = (x: number, y: number, testWidth: number, testHeight: number): boolean => {
+      const proposedArea = {
+        x1: x,
+        y1: y,
+        x2: x + testWidth,
+        y2: y + testHeight
+      };
+
+      return !occupiedAreas.some(area =>
+        !(proposedArea.x2 <= area.x1 ||
+          proposedArea.x1 >= area.x2 ||
+          proposedArea.y2 <= area.y1 ||
+          proposedArea.y1 >= area.y2)
+      );
+    };
+
+    const tryPositions = [
+      { x: centerX, y: centerY },
+      { x: margin, y: margin },
+      { x: viewportWidth - width - margin, y: margin },
+      { x: margin, y: viewportHeight - height - margin },
+      { x: viewportWidth - width - margin, y: viewportHeight - height - margin },
+      { x: centerX, y: margin },
+      { x: centerX, y: viewportHeight - height - margin },
+      { x: margin, y: centerY },
+      { x: viewportWidth - width - margin, y: centerY }
+    ];
+
+    for (const pos of tryPositions) {
+      if (pos.x >= 0 && pos.y >= 0 &&
+          pos.x + width <= viewportWidth &&
+          pos.y + height <= viewportHeight &&
+          isPositionFree(pos.x, pos.y, width, height)) {
+        return pos;
+      }
+    }
+
+    const gridStep = 50;
+    for (let y = margin; y <= viewportHeight - height - margin; y += gridStep) {
+      for (let x = margin; x <= viewportWidth - width - margin; x += gridStep) {
+        if (isPositionFree(x, y, width, height)) {
+          return { x, y };
+        }
+      }
+    }
+
+    const fineGridStep = 20;
+    for (let y = margin; y <= viewportHeight - height - margin; y += fineGridStep) {
+      for (let x = margin; x <= viewportWidth - width - margin; x += fineGridStep) {
+        if (isPositionFree(x, y, width, height)) {
+          return { x, y };
+        }
+      }
+    }
+
+    // If no free position found, try to minimize overlap
+    let bestPosition = { x: centerX, y: centerY };
+    let minOverlapArea = Infinity;
+
+    const overlapTestStep = 40;
+    for (let y = margin; y <= viewportHeight - height - margin; y += overlapTestStep) {
+      for (let x = margin; x <= viewportWidth - width - margin; x += overlapTestStep) {
+        const proposedArea = {
+          x1: x,
+          y1: y,
+          x2: x + width,
+          y2: y + height
+        };
+
+        let totalOverlapArea = 0;
+        for (const area of occupiedAreas) {
+          const overlapX1 = Math.max(proposedArea.x1, area.x1);
+          const overlapY1 = Math.max(proposedArea.y1, area.y1);
+          const overlapX2 = Math.min(proposedArea.x2, area.x2);
+          const overlapY2 = Math.min(proposedArea.y2, area.y2);
+
+          if (overlapX1 < overlapX2 && overlapY1 < overlapY2) {
+            totalOverlapArea += (overlapX2 - overlapX1) * (overlapY2 - overlapY1);
+          }
+        }
+
+        if (totalOverlapArea < minOverlapArea) {
+          minOverlapArea = totalOverlapArea;
+          bestPosition = { x, y };
+
+          // If we found a position with no overlap, use it immediately
+          if (totalOverlapArea === 0) {
+            return bestPosition;
+          }
+        }
+      }
+    }
+
+    // If still no good position found, use cascade fallback
+    if (minOverlapArea === Infinity) {
+      const windowCount = currentWindows.length;
+      const cascadeOffset = (windowCount * 25) % 200;
+      const cascadeX = Math.min(centerX + cascadeOffset, viewportWidth - width - margin);
+      const cascadeY = Math.min(centerY + cascadeOffset, viewportHeight - height - margin);
+      bestPosition = { x: Math.max(margin, cascadeX), y: Math.max(margin, cascadeY) };
+    }
+
+    return bestPosition;
+  };
+
+  const addNaturalScatter = (position: { x: number; y: number }, width: number, height: number): { x: number; y: number } => {
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 1080;
+
+    // Add significant random offset for more human-like placement
+    const scatterRangeX = Math.min(120, viewportWidth * 0.08); // Up to 120px or 8% of viewport width
+    const scatterRangeY = Math.min(80, viewportHeight * 0.06);  // Up to 80px or 6% of viewport height
+
+    const offsetX = (Math.random() - 0.5) * 2 * scatterRangeX;
+    const offsetY = (Math.random() - 0.5) * 2 * scatterRangeY;
+
+    // Apply offset but keep within viewport bounds
+    const margin = 30;
+    const scatteredX = Math.max(margin, Math.min(viewportWidth - width - margin, position.x + offsetX));
+    const scatteredY = Math.max(margin, Math.min(viewportHeight - height - margin, position.y + offsetY));
+
+    return { x: scatteredX, y: scatteredY };
+  };
+
+  const openWindow = (windowData: Omit<WindowData, 'isOpen' | 'zIndex'>) => {
+    setState(prev => {
+      // Get current windows excluding any window with the same ID (for reopening)
+      const currentWindows = prev.windows.filter(w => w.id !== windowData.id);
+
+      const optimalPosition = getOptimalPosition(windowData.width, windowData.height, currentWindows);
+
+      // Add natural scatter to make positioning look more human
+      const scatteredPosition = addNaturalScatter(optimalPosition, windowData.width, windowData.height);
+
+      const newWindow = {
+        ...windowData,
+        x: scatteredPosition.x,
+        y: scatteredPosition.y,
+        isOpen: true,
+        zIndex: prev.nextZIndex
+      };
+
+      const newState = {
+        ...prev,
+        windows: [
+          ...currentWindows,
+          newWindow
+        ],
+        activeWindowId: windowData.id,
+        nextZIndex: prev.nextZIndex + 1
+      };
+
+      const windowPositions = newState.windows.map(w =>
+        `${w.title} (${w.id}): x=${Math.round(w.x)}, y=${Math.round(w.y)}, w=${w.width}, h=${w.height}`
+      ).join('\n');
+
+      eventBus.emit('system:output', {
+        text: `Window opened: ${windowData.title}\nPosition: x=${Math.round(scatteredPosition.x)}, y=${Math.round(scatteredPosition.y)} (smart positioning + scatter)\nSize: ${windowData.width}x${windowData.height}\n\nAll windows:\n${windowPositions}\n\n`
+      });
+
+      return newState;
+    });
   };
 
   const closeWindow = (windowId: string) => {
@@ -58,6 +227,17 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
     }));
   };
 
+  const updateWindowPosition = (windowId: string, x: number, y: number) => {
+    setState(prev => ({
+      ...prev,
+      windows: prev.windows.map(w =>
+        w.id === windowId
+          ? { ...w, x, y }
+          : w
+      )
+    }));
+  };
+
   useImperativeHandle(ref, () => ({
     openWindow,
     closeWindow
@@ -75,8 +255,8 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
           component: () => (
             <div className="p-4 text-gray-800 text-sm whitespace-pre-wrap">{String(data?.content || '')}</div>
           ),
-          x: data?.position?.x ?? 120,
-          y: data?.position?.y ?? 120,
+          x: 0,
+          y: 0,
           width: data?.size?.width ?? 360,
           height: data?.size?.height ?? 240
         });
@@ -115,6 +295,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
             isActive={state.activeWindowId === window.id}
             onClose={() => closeWindow(window.id)}
             onFocus={() => focusWindow(window.id)}
+            onPositionChange={updateWindowPosition}
           >
             <WindowComponent />
           </Window>

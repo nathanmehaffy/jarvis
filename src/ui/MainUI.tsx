@@ -49,8 +49,8 @@ export function MainUI() {
       id: 'input-window',
       title: 'Input Manager',
       component: InputWindow,
-      x: 100,
-      y: 100,
+      x: 0,
+      y: 0,
       width: 400,
       height: 300
     });
@@ -61,8 +61,8 @@ export function MainUI() {
       id: 'ai-window',
       title: 'AI Manager',
       component: AIWindow,
-      x: 200,
-      y: 150,
+      x: 0,
+      y: 0,
       width: 400,
       height: 300
     });
@@ -73,8 +73,8 @@ export function MainUI() {
       id: 'user-notes-window',
       title: 'Personal Notes',
       component: UserNotes,
-      x: 300,
-      y: 200,
+      x: 0,
+      y: 0,
       width: 500,
       height: 400
     });
@@ -85,8 +85,8 @@ export function MainUI() {
       id: 'system-output-window',
       title: 'System Output',
       component: SystemOutput,
-      x: 350,
-      y: 250,
+      x: 0,
+      y: 0,
       width: 600,
       height: 450
     });
@@ -98,8 +98,8 @@ export function MainUI() {
       id: windowId,
       title: `Image: ${imageName}`,
       component: () => <ImageViewer imageUrl={imageUrl} imageName={imageName} />,
-      x: 400,
-      y: 300,
+      x: 0,
+      y: 0,
       width: 700,
       height: 500
     });
@@ -114,8 +114,8 @@ export function MainUI() {
       id: 'graph-window',
       title: 'Line Graph',
       component: GraphWindow,
-      x: 400,
-      y: 100,
+      x: 0,
+      y: 0,
       width: 750,
       height: 550
     });
@@ -126,8 +126,8 @@ export function MainUI() {
       id: 'bar-graph-window',
       title: 'Bar Graph',
       component: BarGraphWindow,
-      x: 450,
-      y: 150,
+      x: 0,
+      y: 0,
       width: 750,
       height: 550
     });
@@ -138,8 +138,8 @@ export function MainUI() {
       id: 'pie-chart-window',
       title: 'Pie Chart',
       component: PieChartWindow,
-      x: 500,
-      y: 200,
+      x: 0,
+      y: 0,
       width: 800,
       height: 600
     });

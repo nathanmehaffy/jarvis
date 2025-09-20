@@ -13,6 +13,7 @@ interface WindowProps {
 	isActive: boolean;
 	onClose: () => void;
 	onFocus: () => void;
+	onPositionChange?: (id: string, x: number, y: number) => void;
 }
 
 export function Window({
@@ -25,16 +26,19 @@ export function Window({
 	height,
 	isActive,
 	onClose,
-	onFocus
+	onFocus,
+	onPositionChange
 }: WindowProps) {
 	const windowRef = useRef<HTMLDivElement>(null);
 	const [position, setPosition] = useState({ x: initialX, y: initialY });
 	const [size, setSize] = useState({ width, height });
 	const isDraggingRef = useRef(false);
 	const dragOffsetRef = useRef({ x: 0, y: 0 });
+	const currentPositionRef = useRef({ x: initialX, y: initialY });
 
 	useEffect(() => {
 		setPosition({ x: initialX, y: initialY });
+		currentPositionRef.current = { x: initialX, y: initialY };
 	}, [initialX, initialY]);
 
 	useEffect(() => {
@@ -54,16 +58,23 @@ export function Window({
 
 	const onMouseMove = (e: MouseEvent) => {
 		if (!isDraggingRef.current) return;
-		setPosition({
+		const newPosition = {
 			x: e.clientX - dragOffsetRef.current.x,
 			y: e.clientY - dragOffsetRef.current.y
-		});
+		};
+		setPosition(newPosition);
+		currentPositionRef.current = newPosition;
 	};
 
 	const onMouseUp = () => {
 		isDraggingRef.current = false;
 		document.removeEventListener('mousemove', onMouseMove);
 		document.removeEventListener('mouseup', onMouseUp);
+
+		// Notify parent of position change after drag using the current position ref
+		if (onPositionChange) {
+			onPositionChange(id, currentPositionRef.current.x, currentPositionRef.current.y);
+		}
 	};
 
 	return (
@@ -75,13 +86,14 @@ export function Window({
 			onMouseDown={() => onFocus()}
 		>
 			<div className={`flex items-center justify-between px-3 py-2 select-none cursor-move ${isActive ? 'bg-gray-100' : 'bg-gray-50'}`} onMouseDown={onMouseDown}>
-				<div className="flex items-center space-x-2">
-					<span className="w-2.5 h-2.5 rounded-full bg-red-400"></span>
-					<span className="w-2.5 h-2.5 rounded-full bg-yellow-400"></span>
-					<span className="w-2.5 h-2.5 rounded-full bg-green-400"></span>
-					<span className="ml-2 text-sm font-medium text-gray-800">{title}</span>
+				<div className="flex items-center">
+					<span className="text-sm font-medium text-gray-800">{title}</span>
 				</div>
-				<button onClick={onClose} className="px-2 py-1 text-xs rounded bg-gray-200 hover:bg-gray-300">Close</button>
+				<button
+					onClick={onClose}
+					className="w-3 h-3 rounded-full bg-red-400 hover:bg-red-500 transition-colors duration-150 flex-shrink-0"
+					onMouseDown={(e) => e.stopPropagation()}
+				></button>
 			</div>
 			<div className="w-full h-[calc(100%-36px)] bg-white">
 				{children}

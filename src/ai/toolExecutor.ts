@@ -72,7 +72,7 @@ export class ToolExecutor {
       type: params.windowType,
       title: params.context.title || 'Untitled Window',
       content: params.context.content || '',
-      position: params.context.position || { x: 100, y: 100 },
+      position: params.context.position || { x: 0, y: 0 },
       size: params.context.size || { width: 300, height: 200 },
       context: params.context,
       timestamp: Date.now()
