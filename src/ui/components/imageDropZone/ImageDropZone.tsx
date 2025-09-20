@@ -4,9 +4,10 @@ import { useState, useRef } from 'react';
 
 interface ImageDropZoneProps {
   onImageUpload: (imageUrl: string, imageName: string) => void;
+  onMultipleImageUpload?: (images: { url: string; name: string }[]) => void;
 }
 
-export function ImageDropZone({ onImageUpload }: ImageDropZoneProps) {
+export function ImageDropZone({ onImageUpload, onMultipleImageUpload }: ImageDropZoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -29,14 +30,24 @@ export function ImageDropZone({ onImageUpload }: ImageDropZoneProps) {
     const imageFiles = files.filter(file => file.type.startsWith('image/'));
     
     if (imageFiles.length > 0) {
-      handleImageFile(imageFiles[0]);
+      if (imageFiles.length === 1) {
+        handleImageFile(imageFiles[0]);
+      } else {
+        handleMultipleImageFiles(imageFiles);
+      }
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (files.length > 0) {
-      handleImageFile(files[0]);
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    
+    if (imageFiles.length > 0) {
+      if (imageFiles.length === 1) {
+        handleImageFile(imageFiles[0]);
+      } else {
+        handleMultipleImageFiles(imageFiles);
+      }
     }
   };
 
@@ -53,6 +64,37 @@ export function ImageDropZone({ onImageUpload }: ImageDropZoneProps) {
       setIsUploading(false);
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleMultipleImageFiles = (files: File[]) => {
+    setIsUploading(true);
+    
+    const imagePromises = files.map(file => {
+      return new Promise<{ url: string; name: string }>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const imageUrl = event.target?.result as string;
+          resolve({ url: imageUrl, name: file.name });
+        };
+        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+        reader.readAsDataURL(file);
+      });
+    });
+
+    Promise.all(imagePromises)
+      .then(images => {
+        if (onMultipleImageUpload) {
+          onMultipleImageUpload(images);
+        } else {
+          // Fallback to single image upload for each image
+          images.forEach(image => onImageUpload(image.url, image.name));
+        }
+        setIsUploading(false);
+      })
+      .catch(error => {
+        console.error('Error processing multiple images:', error);
+        setIsUploading(false);
+      });
   };
 
   const handleClick = () => {
@@ -79,6 +121,7 @@ export function ImageDropZone({ onImageUpload }: ImageDropZoneProps) {
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         onChange={handleFileSelect}
         className="hidden"
       />

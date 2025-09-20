@@ -12,7 +12,13 @@ export interface WindowProps {
   maxHeight?: number;
   onClose?: () => void;
   isActive?: boolean;
+  isMinimized: boolean;
+  isFullscreen?: boolean;
   onFocus?: () => void;
+  onMinimize: () => void;
+  onRestore: () => void;
+  onFullscreen?: () => void;
+  onPositionChange?: (id: string, x: number, y: number) => void;
   onResize?: (width: number, height: number) => void;
 }
 

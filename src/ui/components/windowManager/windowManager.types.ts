@@ -5,11 +5,13 @@ export interface WindowData {
   content?: string;
   isOpen: boolean;
   isMinimized: boolean;
+  isFullscreen: boolean;
   x: number;
   y: number;
   width: number;
   height: number;
   zIndex: number;
+  imageUrl?: string;
 }
 
 export interface WindowManagerState {
