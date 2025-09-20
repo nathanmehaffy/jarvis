@@ -1,32 +1,24 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-
-interface WindowProps {
-	children: React.ReactNode;
-	id: string;
-	title: string;
-	initialX: number;
-	initialY: number;
-	width: number;
-	height: number;
-	isActive: boolean;
-	onClose: () => void;
-	onFocus: () => void;
-	onPositionChange?: (id: string, x: number, y: number) => void;
-}
+import { WindowProps } from './window.types';
 
 export function Window({
 	children,
 	id,
 	title,
-	initialX,
-	initialY,
-	width,
-	height,
-	isActive,
-	onClose,
-	onFocus,
+	initialX = 0,
+	initialY = 0,
+	width = 300,
+	height = 200,
+	isActive = false,
+	isMinimized,
+	isFullscreen = false,
+	onClose = () => {},
+	onMinimize,
+	onRestore,
+	onFullscreen = () => {},
+	onFocus = () => {},
 	onPositionChange
 }: WindowProps) {
 	const windowRef = useRef<HTMLDivElement>(null);
@@ -77,27 +69,68 @@ export function Window({
 		}
 	};
 
+	const handleMinimize = () => {
+		if (isMinimized) {
+			onRestore();
+		} else {
+			onMinimize();
+		}
+	};
+
 	return (
 		<div
 			ref={windowRef}
 			data-window-id={id}
-			className="absolute bg-white rounded-xl shadow-2xl overflow-hidden border border-black/5"
-			style={{ left: position.x, top: position.y, width: size.width, height: size.height }}
+			className={`absolute bg-white rounded-xl shadow-2xl overflow-hidden border border-black/5 ${isFullscreen ? 'fixed inset-0 rounded-none z-50' : ''}`}
+			style={isFullscreen ? {} : {
+				left: position.x,
+				top: position.y,
+				width: size.width,
+				height: isMinimized ? 'auto' : size.height
+			}}
 			onMouseDown={() => onFocus()}
 		>
-			<div className={`flex items-center justify-between px-3 py-2 select-none cursor-move ${isActive ? 'bg-gray-100' : 'bg-gray-50'}`} onMouseDown={onMouseDown}>
-				<div className="flex items-center">
+			<div className={`flex items-center px-3 py-2 select-none cursor-move ${isActive ? 'bg-gray-100' : 'bg-gray-50'}`} onMouseDown={onMouseDown}>
+				<div className="flex items-center space-x-2">
+					<div className="group flex items-center space-x-2">
+						<button
+							onClick={onClose}
+							className="w-3 h-3 rounded-full bg-red-400 hover:bg-red-500 transition-colors duration-150 flex-shrink-0 flex items-center justify-center"
+							onMouseDown={(e) => e.stopPropagation()}
+						>
+							<span className="text-xs text-gray-800 font-bold leading-none opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+								×
+							</span>
+						</button>
+						<button
+							onClick={handleMinimize}
+							className="w-3 h-3 rounded-full bg-yellow-400 hover:bg-yellow-500 transition-colors duration-150 flex-shrink-0 flex items-center justify-center"
+							onMouseDown={(e) => e.stopPropagation()}
+							title={isMinimized ? "Restore" : "Minimize"}
+						>
+							<span className="text-xs text-gray-800 font-bold leading-none opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+								{isMinimized ? '+' : '−'}
+							</span>
+						</button>
+						<button
+							onClick={onFullscreen}
+							className="w-3 h-3 rounded-full bg-green-400 hover:bg-green-500 transition-colors duration-150 flex-shrink-0 flex items-center justify-center"
+							onMouseDown={(e) => e.stopPropagation()}
+							title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+						>
+							<span className="text-xs text-gray-800 font-bold leading-none opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+								{isFullscreen ? '⤈' : '⤢'}
+							</span>
+						</button>
+					</div>
 					<span className="text-sm font-medium text-gray-800">{title}</span>
 				</div>
-				<button
-					onClick={onClose}
-					className="w-3 h-3 rounded-full bg-red-400 hover:bg-red-500 transition-colors duration-150 flex-shrink-0"
-					onMouseDown={(e) => e.stopPropagation()}
-				></button>
 			</div>
-			<div className="w-full h-[calc(100%-36px)] bg-white">
-				{children}
-			</div>
+			{!isMinimized && (
+				<div className={`w-full bg-white ${isFullscreen ? 'h-[calc(100vh-36px)]' : 'h-[calc(100%-36px)]'}`}>
+					{children}
+				</div>
+			)}
 		</div>
 	);
 }

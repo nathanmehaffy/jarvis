@@ -12,6 +12,9 @@ interface WindowManagerProps {
 export interface WindowManagerRef {
   openWindow: (windowData: Omit<WindowData, 'isOpen' | 'zIndex'>) => void;
   closeWindow: (windowId: string) => void;
+  minimizeWindow: (windowId: string) => void;
+  restoreWindow: (windowId: string) => void;
+  toggleFullscreen: (windowId: string) => void;
 }
 
 export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({ children }, ref) => {
@@ -181,6 +184,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
         x: scatteredPosition.x,
         y: scatteredPosition.y,
         isOpen: true,
+        isFullscreen: false,
         zIndex: prev.nextZIndex
       };
 
@@ -214,6 +218,41 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
     }));
   };
 
+  const minimizeWindow = (windowId: string) => {
+    setState(prev => ({
+      ...prev,
+      windows: prev.windows.map(w =>
+        w.id === windowId
+          ? { ...w, isMinimized: true }
+          : w
+      )
+    }));
+  };
+
+  const restoreWindow = (windowId: string) => {
+    setState(prev => ({
+      ...prev,
+      windows: prev.windows.map(w =>
+        w.id === windowId
+          ? { ...w, isMinimized: false }
+          : w
+      ),
+      activeWindowId: windowId
+    }));
+  };
+
+  const toggleFullscreen = (windowId: string) => {
+    setState(prev => ({
+      ...prev,
+      windows: prev.windows.map(w =>
+        w.id === windowId
+          ? { ...w, isFullscreen: !w.isFullscreen }
+          : w
+      ),
+      activeWindowId: windowId
+    }));
+  };
+
   const focusWindow = (windowId: string) => {
     setState(prev => ({
       ...prev,
@@ -240,7 +279,10 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
 
   useImperativeHandle(ref, () => ({
     openWindow,
-    closeWindow
+    closeWindow,
+    minimizeWindow,
+    restoreWindow,
+    toggleFullscreen
   }));
 
   // Listen for AI/UI events to open/close windows
@@ -255,6 +297,8 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
           component: () => (
             <div className="p-4 text-gray-800 text-sm whitespace-pre-wrap">{String(data?.content || '')}</div>
           ),
+          isMinimized: false,
+          isFullscreen: false,
           x: 0,
           y: 0,
           width: data?.size?.width ?? 360,
@@ -293,7 +337,12 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
             width={window.width}
             height={window.height}
             isActive={state.activeWindowId === window.id}
+            isMinimized={window.isMinimized}
+            isFullscreen={window.isFullscreen}
             onClose={() => closeWindow(window.id)}
+            onMinimize={() => minimizeWindow(window.id)}
+            onRestore={() => restoreWindow(window.id)}
+            onFullscreen={() => toggleFullscreen(window.id)}
             onFocus={() => focusWindow(window.id)}
             onPositionChange={updateWindowPosition}
           >
