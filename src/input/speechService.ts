@@ -158,7 +158,7 @@ export class SpeechTranscriptionService {
       }
     };
 
-    this.recognition.onerror = (event: any) => {
+    this.recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.error('Speech recognition error:', event.error);
 
       // Don't emit error for no-speech since we want continuous listening through silence

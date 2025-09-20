@@ -33,7 +33,8 @@ export function ImageWindow({
 	const isDraggingRef = useRef(false);
 	const isResizingRef = useRef(false);
 	const dragOffsetRef = useRef({ x: 0, y: 0 });
-	const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
+	const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0, startX: 0, startY: 0 });
+	const resizeDirectionRef = useRef<string>('');
 
 	useEffect(() => {
 		setPosition({ x: initialX, y: initialY });
@@ -54,15 +55,19 @@ export function ImageWindow({
 		document.addEventListener('mouseup', onMouseUp);
 	};
 
-	const onResizeMouseDown = (e: React.MouseEvent) => {
+	const onResizeMouseDown = (e: React.MouseEvent, direction: string) => {
 		e.stopPropagation();
+		e.preventDefault();
 		onFocus();
 		isResizingRef.current = true;
+		resizeDirectionRef.current = direction;
 		resizeStartRef.current = {
 			x: e.clientX,
 			y: e.clientY,
 			width: size.width,
-			height: size.height
+			height: size.height,
+			startX: position.x,
+			startY: position.y
 		};
 		document.addEventListener('mousemove', onResizeMouseMove);
 		document.addEventListener('mouseup', onResizeMouseUp);
@@ -79,27 +84,47 @@ export function ImageWindow({
 
 	const onResizeMouseMove = (e: MouseEvent) => {
 		if (!isResizingRef.current) return;
+		e.preventDefault();
 		const deltaX = e.clientX - resizeStartRef.current.x;
 		const deltaY = e.clientY - resizeStartRef.current.y;
 		
 		// Calculate the aspect ratio from the original size
 		const originalAspectRatio = resizeStartRef.current.width / resizeStartRef.current.height;
 		
-		// Calculate new dimensions based on the larger delta to maintain aspect ratio
-		const deltaWidth = resizeStartRef.current.width + deltaX;
-		const deltaHeight = resizeStartRef.current.height + deltaY;
+		let newWidth, newHeight, newX = resizeStartRef.current.startX, newY = resizeStartRef.current.startY;
 		
-		let newWidth, newHeight;
+		// Use the larger delta for diagonal scaling (preserves aspect ratio)
+		const scaleFactor = Math.max(Math.abs(deltaX), Math.abs(deltaY));
+		const scaleDirection = (deltaX + deltaY) >= 0 ? 1 : -1;
+		const actualDelta = scaleFactor * scaleDirection;
 		
-		// Determine which dimension to use as the primary (larger change)
-		if (Math.abs(deltaX) > Math.abs(deltaY)) {
-			// Width is the primary dimension
-			newWidth = Math.max(200, deltaWidth);
-			newHeight = newWidth / originalAspectRatio;
-		} else {
-			// Height is the primary dimension
-			newHeight = Math.max(150, deltaHeight);
-			newWidth = newHeight * originalAspectRatio;
+		switch (resizeDirectionRef.current) {
+			case 'se': // Bottom-right
+				newWidth = Math.max(200, resizeStartRef.current.width + actualDelta);
+				newHeight = newWidth / originalAspectRatio;
+				newX = resizeStartRef.current.startX;
+				newY = resizeStartRef.current.startY;
+				break;
+			case 'sw': // Bottom-left
+				newWidth = Math.max(200, resizeStartRef.current.width - actualDelta);
+				newHeight = newWidth / originalAspectRatio;
+				newX = resizeStartRef.current.startX + (resizeStartRef.current.width - newWidth);
+				newY = resizeStartRef.current.startY;
+				break;
+			case 'ne': // Top-right
+				newWidth = Math.max(200, resizeStartRef.current.width + actualDelta);
+				newHeight = newWidth / originalAspectRatio;
+				newX = resizeStartRef.current.startX;
+				newY = resizeStartRef.current.startY + (resizeStartRef.current.height - newHeight);
+				break;
+			case 'nw': // Top-left
+				newWidth = Math.max(200, resizeStartRef.current.width - actualDelta);
+				newHeight = newWidth / originalAspectRatio;
+				newX = resizeStartRef.current.startX + (resizeStartRef.current.width - newWidth);
+				newY = resizeStartRef.current.startY + (resizeStartRef.current.height - newHeight);
+				break;
+			default:
+				return;
 		}
 		
 		// Ensure minimum dimensions
@@ -107,6 +132,7 @@ export function ImageWindow({
 		newHeight = Math.max(150, newHeight);
 		
 		setSize({ width: newWidth, height: newHeight });
+		setPosition({ x: newX, y: newY });
 	};
 
 	const onMouseUp = () => {
@@ -125,7 +151,7 @@ export function ImageWindow({
 		<div
 			ref={windowRef}
 			data-window-id={id}
-			className={`absolute rounded-2xl shadow-2xl overflow-hidden border-2 backdrop-blur-sm bg-black/20 transition-colors duration-150 ${
+			className={`absolute rounded-2xl shadow-2xl overflow-hidden border-2 backdrop-blur-sm bg-black/20 transition-colors duration-150 select-none ${
 				isActive ? 'border-blue-400/80 shadow-blue-400/20' : 'border-white/20'
 			}`}
 			style={{ 
@@ -152,12 +178,40 @@ export function ImageWindow({
 				</button>
 			</div>
 
-			{/* Resize handle - bottom right corner */}
+			{/* Resize handles - all 4 corners */}
+			{/* Bottom-right */}
 			<div
-				className="absolute bottom-0 right-0 w-6 h-6 cursor-se-resize z-20"
-				onMouseDown={onResizeMouseDown}
+				className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize z-20 select-none"
+				onMouseDown={(e) => onResizeMouseDown(e, 'se')}
 				style={{
-					background: 'linear-gradient(-45deg, transparent 30%, rgba(255,255,255,0.4) 30%, rgba(255,255,255,0.4) 70%, transparent 70%)'
+					background: 'linear-gradient(-45deg, transparent 40%, rgba(255,255,255,0.2) 40%, rgba(255,255,255,0.2) 60%, transparent 60%)'
+				}}
+			/>
+			
+			{/* Bottom-left */}
+			<div
+				className="absolute bottom-0 left-0 w-4 h-4 cursor-sw-resize z-20 select-none"
+				onMouseDown={(e) => onResizeMouseDown(e, 'sw')}
+				style={{
+					background: 'linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.2) 40%, rgba(255,255,255,0.2) 60%, transparent 60%)'
+				}}
+			/>
+			
+			{/* Top-right */}
+			<div
+				className="absolute top-0 right-0 w-4 h-4 cursor-ne-resize z-20 select-none"
+				onMouseDown={(e) => onResizeMouseDown(e, 'ne')}
+				style={{
+					background: 'linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.2) 40%, rgba(255,255,255,0.2) 60%, transparent 60%)'
+				}}
+			/>
+			
+			{/* Top-left */}
+			<div
+				className="absolute top-0 left-0 w-4 h-4 cursor-nw-resize z-20 select-none"
+				onMouseDown={(e) => onResizeMouseDown(e, 'nw')}
+				style={{
+					background: 'linear-gradient(-45deg, transparent 40%, rgba(255,255,255,0.2) 40%, rgba(255,255,255,0.2) 60%, transparent 60%)'
 				}}
 			/>
 
