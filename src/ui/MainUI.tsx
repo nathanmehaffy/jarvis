@@ -15,6 +15,7 @@ import { PieChartWindow } from './components/pieChart';
 import { AnimatedBackground } from './components/background';
 import { ImageDropZone } from './components/imageDropZone';
 import { ImageViewer } from './components/imageViewer';
+import { DebugSidebar } from './components/debugSidebar';
 
 export function MainUI() {
   const windowManagerRef = useRef<WindowManagerRef>(null);
@@ -25,6 +26,7 @@ export function MainUI() {
   const [minimizedWindows, setMinimizedWindows] = useState<Set<string>>(new Set());
   const [isImageDropMinimized, setIsImageDropMinimized] = useState(false);
   const [isDesktopMinimized, setIsDesktopMinimized] = useState(false);
+  const [showDebugSidebar, setShowDebugSidebar] = useState(false);
 
   useEffect(() => {
     aiManager.initialize();
@@ -143,27 +145,27 @@ export function MainUI() {
     const screenHeight = window.innerHeight;
     const padding = 20;
     const minGap = 10;
-
+    
     const existingWindows = windowManagerRef.current?.getWindows?.() || [];
-
+    
     const isPositionAvailable = (x: number, y: number) => {
       if (x + windowWidth > screenWidth - padding || y + windowHeight > screenHeight - padding) {
         return false;
       }
-
+      
       return !existingWindows.some(window => {
         const windowX = window.x || 0;
         const windowY = window.y || 0;
         const windowW = window.width || 0;
         const windowH = window.height || 0;
-
+        
         return !(x >= windowX + windowW + minGap || 
                 x + windowWidth <= windowX - minGap || 
                 y >= windowY + windowH + minGap || 
                 y + windowHeight <= windowY - minGap);
       });
     };
-
+    
     for (let y = padding; y + windowHeight <= screenHeight - padding; y += 10) {
       for (let x = padding; x + windowWidth <= screenWidth - padding; x += 10) {
         if (isPositionAvailable(x, y)) {
@@ -171,7 +173,7 @@ export function MainUI() {
         }
       }
     }
-
+    
     return {
       x: Math.max(padding, (screenWidth - windowWidth) / 2),
       y: Math.max(padding, (screenHeight - windowHeight) / 2)
@@ -301,7 +303,23 @@ export function MainUI() {
       >
         <AnimatedBackground />
         <VoiceTaskListener />
-        
+
+        {showDebugSidebar && (
+          <DebugSidebar
+            inputStatus={inputStatus}
+            aiStatus={aiStatus}
+            apiBudget={apiBudget}
+            openInputWindow={openInputWindow}
+            openAIWindow={openAIWindow}
+            openUserNotesWindow={openUserNotesWindow}
+            openSystemOutputWindow={openSystemOutputWindow}
+            openGraphWindow={openGraphWindow}
+            openBarGraphWindow={openBarGraphWindow}
+            openPieChartWindow={openPieChartWindow}
+            openPreloadedImageWindow={openPreloadedImageWindow}
+          />
+        )}
+         
         {/* Image Drop Zone - Fixed Position */}
         <div className="fixed top-4 right-4 z-50">
           {isImageDropMinimized ? (
@@ -340,23 +358,18 @@ export function MainUI() {
           )}
         </div>
 
-        {/* Debug indicators - Bottom right */}
-        <div className="fixed bottom-4 right-4 z-40">
-          <div className="space-y-2">
-            <div className="px-3 py-2 rounded-xl bg-black/40 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="mr-2">Input</span>
-                <span className={`px-2 py-0.5 rounded ${inputStatus === 'listening' ? 'bg-red-500' : inputStatus === 'processing' ? 'bg-yellow-500' : inputStatus === 'error' ? 'bg-rose-600' : 'bg-gray-500'}`}>{inputStatus}</span>
-              </div>
-              <div className="mt-1 text-[10px] text-white/80">API/min: {apiBudget.used}{apiBudget.nextMs != null ? ` • next ${Math.max(0, Math.round(apiBudget.nextMs/1000))}s` : ''}</div>
-            </div>
-            <div className="px-3 py-2 rounded-xl bg-black/40 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="mr-2">AI</span>
-                <span className={`px-2 py-0.5 rounded ${aiStatus === 'processing' ? 'bg-yellow-500' : aiStatus === 'error' ? 'bg-rose-600' : 'bg-emerald-600'}`}>{aiStatus}</span>
-              </div>
-            </div>
-          </div>
+        {/* Debug toggle button - Bottom right */}
+        <div className="fixed bottom-4 right-4 z-50">
+          <button
+            onClick={() => setShowDebugSidebar(v => !v)}
+            className="w-12 h-12 bg-black/40 hover:bg-black/60 text-white rounded-full border border-white/20 shadow-xl flex items-center justify-center transition-all duration-200"
+            title={showDebugSidebar ? 'Hide Debug Sidebar' : 'Show Debug Sidebar'}
+          >
+            {/* Bug icon */}
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M3 13h4m10 0h4M5 17l2-2m10 2l-2-2M5 9l2 2m10-2l-2 2M12 6a5 5 0 00-5 5v4a5 5 0 0010 0v-4a5 5 0 00-5-5z" />
+            </svg>
+          </button>
         </div>
 
         {/* Desktop Content */}
