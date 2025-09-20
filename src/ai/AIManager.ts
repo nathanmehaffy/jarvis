@@ -6,6 +6,33 @@ export class AIManager {
   private isInitialized = false;
   private uiContext: any = {};
 
+  // Only send data that can be structured-cloned to the worker
+  private getSerializableUIContext(): any {
+    try {
+      const context = this.uiContext || {};
+      const serializable: any = {};
+
+      if (Array.isArray(context.windows)) {
+        serializable.windows = context.windows.map((w: any) => ({
+          id: w?.id,
+          title: w?.title,
+          // omit component/functions; include only plain data
+          isOpen: Boolean(w?.isOpen),
+          isMinimized: Boolean(w?.isMinimized),
+          x: typeof w?.x === 'number' ? w.x : undefined,
+          y: typeof w?.y === 'number' ? w.y : undefined,
+          width: typeof w?.width === 'number' ? w.width : undefined,
+          height: typeof w?.height === 'number' ? w.height : undefined,
+          zIndex: typeof w?.zIndex === 'number' ? w.zIndex : undefined
+        }));
+      }
+
+      return serializable;
+    } catch {
+      return {};
+    }
+  }
+
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
 
@@ -14,6 +41,11 @@ export class AIManager {
       
       this.worker.onmessage = (event) => {
         const { type, data } = event.data;
+        // Normalize error channel
+        if (type === 'AI_ERROR') {
+          eventBus.emit('ai:error', data);
+          return;
+        }
         // Bridge UI_* messages to UI event bus
         if (type === 'UI_OPEN_WINDOW') {
           eventBus.emit('ui:open_window', data);
@@ -45,7 +77,7 @@ export class AIManager {
             if (typeof text === 'string' && text.trim().length > 0) {
               this.worker?.postMessage({
                 type: 'PROCESS_TEXT_COMMAND',
-                data: { text, uiContext: this.uiContext }
+                data: { text, uiContext: this.getSerializableUIContext() }
               });
             }
           }
@@ -71,7 +103,7 @@ export class AIManager {
 
     this.worker.postMessage({
       type: 'PROCESS_AI_REQUEST',
-      data: { ...request, uiContext: this.uiContext }
+      data: { ...request, uiContext: this.getSerializableUIContext() }
     });
   }
 
@@ -83,7 +115,7 @@ export class AIManager {
 
     this.worker.postMessage({
       type: 'PROCESS_TEXT_COMMAND',
-      data: { text, uiContext: this.uiContext }
+      data: { text, uiContext: this.getSerializableUIContext() }
     });
   }
 
