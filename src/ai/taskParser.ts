@@ -17,7 +17,7 @@ export class TaskParser {
       // Use Cerebras to process the natural language input
       const response = await this.cerebrasClient.processTextToTasks(text, AVAILABLE_TOOLS);
       
-      const tasks: Task[] = [];
+      let tasks: Task[] = [];
       
       // Extract tool calls from the response
       if (response.choices && response.choices.length > 0) {
@@ -29,13 +29,14 @@ export class TaskParser {
               try {
                 const parameters = JSON.parse(toolCall.function.arguments);
                 
-                const task: Task = {
+                let task: Task = {
                   id: this.generateTaskId(),
                   tool: toolCall.function.name,
                   parameters: parameters,
                   description: this.generateTaskDescription(toolCall.function.name, parameters)
                 };
-                
+                // Normalize education intents for consistency (e.g., explain -> explainer)
+                task = this.normalizeEducationIntent(text, task);
                 tasks.push(task);
               } catch (parseError) {
                 console.error('Failed to parse tool call arguments:', parseError);
@@ -44,7 +45,9 @@ export class TaskParser {
           }
         }
       }
-      
+      // Final normalization pass
+      tasks = tasks.map(t => this.normalizeEducationIntent(text, t));
+
       // If no tool calls were generated, try to handle simple cases with fallback parsing
       if (tasks.length === 0) {
         const fallbackTasks = this.fallbackParsing(text);
@@ -78,15 +81,39 @@ export class TaskParser {
     const lowerText = text.toLowerCase();
     
     // Simple pattern matching for common commands
-    if (lowerText.includes('open') || lowerText.includes('create') || lowerText.includes('show')) {
+    if (lowerText.includes('open') || lowerText.includes('create') || lowerText.includes('show') || lowerText.includes('start')) {
       let windowType = 'general';
       let content = '';
+      let metadata: Record<string, any> | undefined = undefined;
       
       if (lowerText.includes('sticky note') || lowerText.includes('note')) {
         windowType = 'sticky-note';
         // Extract content after "note" or similar keywords
         const noteMatch = text.match(/(?:sticky note|note|reminder)(?:\s+(?:saying|with|that says|about))?\s*["']?([^"']+)["']?/i);
         content = noteMatch ? noteMatch[1].trim() : 'New sticky note';
+      } else if (lowerText.includes('lesson')) {
+        windowType = 'lesson';
+        const title = this.extractTitle(text) || 'New Lesson';
+        const stepMatch = text.match(/step\s*(\d+)/i);
+        const lessonIdMatch = text.match(/lesson\s*(id\s*)?(\w+)/i);
+        metadata = {
+          lessonId: lessonIdMatch ? lessonIdMatch[2] : undefined,
+          step: stepMatch ? Number(stepMatch[1]) : undefined
+        };
+        content = content || 'Lesson content';
+      } else if (lowerText.includes('quiz')) {
+        windowType = 'quiz';
+        const title = this.extractTitle(text) || 'Quiz';
+        metadata = { title };
+        content = content || 'Quiz content';
+      } else if (lowerText.includes('hint')) {
+        windowType = 'hint';
+        const hintMatch = text.match(/hint(?:\s+(?:about|for))?\s*["']?([^"']+)["']?/i);
+        content = hintMatch ? hintMatch[1].trim() : 'Hint';
+      } else if (lowerText.includes('explain') || lowerText.includes('explainer')) {
+        windowType = 'explainer';
+        const topicMatch = text.match(/explain(?:\s+(?:about|the|how to))?\s*["']?([^"']+)["']?/i);
+        content = topicMatch ? topicMatch[1].trim() : 'Explanation';
       } else if (lowerText.includes('notification')) {
         windowType = 'notification';
         content = 'Notification';
@@ -106,7 +133,8 @@ export class TaskParser {
           context: {
             title: this.extractTitle(text) || this.capitalizeFirst(windowType),
             content: content || 'Window content',
-            type: windowType
+            type: windowType,
+            metadata
           }
         },
         description: `Open ${windowType} window`
@@ -149,6 +177,52 @@ export class TaskParser {
     }
     
     return null;
+  }
+
+  private normalizeEducationIntent(text: string, task: Task): Task {
+    try {
+      const lowerText = text.toLowerCase();
+      if (task.tool !== 'open_window') return task;
+      const params = task.parameters as any;
+      if (!params || !params.context) return task;
+      const currentType = (params.windowType || params.context.type || '').toLowerCase();
+
+      // Map explain intents to explainer type if model returned general
+      if ((lowerText.includes('explain') || lowerText.includes('explainer') || lowerText.includes('step by step')) && (currentType === 'general' || currentType === '')) {
+        params.windowType = 'explainer';
+        params.context.type = 'explainer';
+        if (!params.context.title) {
+          const topicMatch = text.match(/explain(?:\s+(?:about|the|how to))?\s*["']?([^"']+)["']?/i);
+          params.context.title = topicMatch ? this.capitalizeFirst(topicMatch[1].trim()) : 'Explainer';
+        }
+        if (!params.context.content) {
+          params.context.content = 'Explanation';
+        }
+        task.description = this.generateTaskDescription('open_window', params);
+      }
+
+      // Map lesson intent
+      if (lowerText.includes('lesson') && (currentType === 'general' || currentType === '')) {
+        params.windowType = params.windowType || 'lesson';
+        params.context.type = params.context.type || 'lesson';
+      }
+
+      // Map quiz intent
+      if (lowerText.includes('quiz') && (currentType === 'general' || currentType === '')) {
+        params.windowType = params.windowType || 'quiz';
+        params.context.type = params.context.type || 'quiz';
+      }
+
+      // Map hint intent
+      if (lowerText.includes('hint') && (currentType === 'general' || currentType === '')) {
+        params.windowType = params.windowType || 'hint';
+        params.context.type = params.context.type || 'hint';
+      }
+
+      return task;
+    } catch {
+      return task;
+    }
   }
 
   private generateTaskDescription(toolName: string, parameters: any): string {

@@ -32,9 +32,10 @@ export interface Task {
 export interface WindowContext {
   title?: string;
   content?: string;
-  type?: 'notification' | 'dialog' | 'settings' | 'sticky-note' | 'general';
+  type?: 'notification' | 'dialog' | 'settings' | 'sticky-note' | 'general' | 'lesson' | 'quiz' | 'hint' | 'explainer';
   position?: { x: number; y: number };
   size?: { width: number; height: number };
+  metadata?: Record<string, any>;
 }
 
 export interface OpenWindowParams {

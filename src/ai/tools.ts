@@ -3,13 +3,13 @@ import { Tool } from './types';
 export const AVAILABLE_TOOLS: Tool[] = [
   {
     name: 'open_window',
-    description: 'Opens a new popup window with specified type and context. Use this when the user wants to create, open, show, or display a window.',
+    description: 'Opens a new popup window with specified type and context. Use this for creating, opening, showing, or displaying a window. Education types supported: lesson, quiz, hint, explainer.',
     parameters: {
       type: 'object',
       properties: {
         windowType: {
           type: 'string',
-          description: 'The type of window to open (e.g., notification, dialog, settings, sticky-note, general)'
+          description: 'The type of window to open (e.g., notification, dialog, settings, sticky-note, general, lesson, quiz, hint, explainer)'
         },
         context: {
           type: 'object',
@@ -25,7 +25,7 @@ export const AVAILABLE_TOOLS: Tool[] = [
             },
             type: {
               type: 'string',
-              description: 'Repeat of window type for UI context (notification, dialog, settings, sticky-note, general)'
+              description: 'Repeat of window type for UI context (notification, dialog, settings, sticky-note, general, lesson, quiz, hint, explainer)'
             },
             position: {
               type: 'object',
@@ -42,6 +42,11 @@ export const AVAILABLE_TOOLS: Tool[] = [
                 width: { type: 'number', description: 'Window width in pixels' },
                 height: { type: 'number', description: 'Window height in pixels' }
               }
+            },
+            metadata: {
+              type: 'object',
+              description: 'Optional metadata for education windows (e.g., lessonId, step, quizQuestions)',
+              properties: {}
             }
           }
         }

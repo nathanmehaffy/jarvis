@@ -20,6 +20,7 @@ export class AITester {
   private taskParser: TaskParser;
   private toolExecutor: ToolExecutor;
   private eventListeners: (() => void)[] = [];
+  private requestQueue: Promise<void> = Promise.resolve();
 
   constructor() {
     this.taskParser = new TaskParser();
@@ -30,47 +31,51 @@ export class AITester {
    * Test a single text command
    */
   async testCommand(text: string): Promise<void> {
-    console.log(`\n🧪 Testing command: "${text}"`);
-    console.log('─'.repeat(50));
-
-    try {
-      // Parse the command
-      console.log('📝 Parsing command...');
-      const parseResult = await this.taskParser.parseTextToTasks(text);
-      
-      if (!parseResult.success) {
-        console.error('❌ Parsing failed:', parseResult.error);
-        return;
-      }
-
-      console.log(`✅ Parsed ${parseResult.tasks.length} task(s):`);
-      parseResult.tasks.forEach((task, index) => {
-        console.log(`   ${index + 1}. ${task.description}`);
-        console.log(`      Tool: ${task.tool}`);
-        console.log(`      Parameters:`, task.parameters);
-      });
-
-      // Execute the tasks
-      console.log('\n⚡ Executing tasks...');
-      const executionResults = await this.toolExecutor.executeTasks(parseResult.tasks);
-      
-      executionResults.forEach((result, index) => {
-        if (result.success) {
-          console.log(`   ✅ Task ${index + 1} executed successfully`);
-          if (result.result) {
-            console.log(`      Result:`, result.result);
-          }
-        } else {
-          console.log(`   ❌ Task ${index + 1} failed:`, result.error);
-        }
-      });
-
+    this.requestQueue = this.requestQueue.then(async () => {
+      console.log(`\n🧪 Testing command: "${text}"`);
       console.log('─'.repeat(50));
-      console.log('✨ Test completed\n');
 
-    } catch (error) {
-      console.error('💥 Test failed with error:', error);
-    }
+      try {
+        // Parse the command (may use Cerebras; fallback handles offline/rate limits)
+        console.log('📝 Parsing command...');
+        const parseResult = await this.taskParser.parseTextToTasks(text);
+
+        if (!parseResult.success) {
+          console.error('❌ Parsing failed:', parseResult.error);
+          return;
+        }
+
+        console.log(`✅ Parsed ${parseResult.tasks.length} task(s):`);
+        parseResult.tasks.forEach((task, index) => {
+          console.log(`   ${index + 1}. ${task.description}`);
+          console.log(`      Tool: ${task.tool}`);
+          console.log(`      Parameters:`, task.parameters);
+        });
+
+        // Execute the tasks
+        console.log('\n⚡ Executing tasks...');
+        const executionResults = await this.toolExecutor.executeTasks(parseResult.tasks);
+
+        executionResults.forEach((result, index) => {
+          if (result.success) {
+            console.log(`   ✅ Task ${index + 1} executed successfully`);
+            if (result.result) {
+              console.log(`      Result:`, result.result);
+            }
+          } else {
+            console.log(`   ❌ Task ${index + 1} failed:`, result.error);
+          }
+        });
+
+        console.log('─'.repeat(50));
+        console.log('✨ Test completed\n');
+
+      } catch (error) {
+        console.error('💥 Test failed with error:', error);
+      }
+    });
+
+    return this.requestQueue;
   }
 
   /**
@@ -99,7 +104,13 @@ export class AITester {
       // Natural language variations
       'I need a reminder note about the dentist appointment',
       'please open a window for the user settings',
-      'dismiss window xyz789'
+      'dismiss window xyz789',
+
+      // Education-focused commands
+      'start lesson "Derivatives" step 1',
+      'open a quiz titled "Chapter 3 Review"',
+      'give me a hint about "Pythagorean theorem"',
+      'explain "binary search" step by step'
     ];
 
     for (const command of testCommands) {

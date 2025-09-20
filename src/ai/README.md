@@ -117,10 +117,27 @@ Opens a new popup window with specified type and context.
   - `type`: string - Window type
   - `position`: {x, y} - Optional position
   - `size`: {width, height} - Optional size
+  - `metadata`: object - Optional education-specific metadata (e.g., `lessonId`, `step`, `quizQuestions`)
 
-**Example:**
+**Examples:**
 ```
 "open a sticky note saying 'Buy groceries'"
+```
+
+```
+"start lesson 'Derivatives' step 1"
+```
+
+```
+"open a quiz titled 'Chapter 3 Review'"
+```
+
+```
+"give me a hint about 'Pythagorean theorem'"
+```
+
+```
+"explain 'binary search' step by step"
 ```
 
 ### close_window
