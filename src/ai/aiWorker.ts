@@ -43,8 +43,19 @@ self.addEventListener('message', (event) => {
 
 async function processTextCommand(data: any) {
   try {
-    const text = typeof data.text === 'string' ? data.text : '';
-    const uiContext = data.uiContext || {};
+    // Accept both object payloads ({ text, uiContext }) and raw string payloads
+    const normalized = ((): { text: string; uiContext: any } => {
+      if (typeof data === 'string') {
+        return { text: data, uiContext: {} };
+      }
+      if (data && typeof data === 'object') {
+        return { text: typeof data.text === 'string' ? data.text : '', uiContext: data.uiContext || {} };
+      }
+      return { text: '', uiContext: {} };
+    })();
+
+    const text = normalized.text;
+    const uiContext = normalized.uiContext;
     
     if (!text) {
       throw new Error('No text input provided');

@@ -45,7 +45,7 @@ export class AIManager {
             if (typeof text === 'string' && text.trim().length > 0) {
               this.worker?.postMessage({
                 type: 'PROCESS_TEXT_COMMAND',
-                data: text
+                data: { text, uiContext: this.uiContext }
               });
             }
           }
