@@ -7,7 +7,22 @@ export class CerebrasClient {
 
   async createChatCompletion(request: CerebrasRequest): Promise<CerebrasResponse> {
     // Always call our internal API route which adds auth server-side
-    const response = await fetch('/api/cerebras-tasks', {
+    const targetUrl = '/api/cerebras-tasks';
+    try {
+      // Debug: log environment context from worker/main thread
+      const isWorkerScope = typeof self !== 'undefined' && (self as unknown as { importScripts?: unknown }).importScripts !== undefined;
+      // Avoid leaking secrets; only log safe runtime details
+      console.log('[CerebrasClient] createChatCompletion', {
+        targetUrl,
+        isWorkerScope,
+        locationHref: (typeof location !== 'undefined' && location?.href) ? location.href : 'n/a',
+        baseHref: (typeof document !== 'undefined' && (document as any)?.baseURI) ? (document as any).baseURI : 'n/a'
+      });
+    } catch {
+      // ignore logging errors
+    }
+
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cerebrasRequest: request })
@@ -21,17 +36,24 @@ export class CerebrasClient {
     return await response.json() as CerebrasResponse;
   }
 
-  async processTextToTasks(text: string, tools: Tool[]): Promise<CerebrasResponse> {
+  async processTextToTasks(text: string, tools: Tool[], uiContext: any = {}): Promise<CerebrasResponse> {
+    const uiState = uiContext.windows && uiContext.windows.length > 0
+      ? `Current open windows:\n${uiContext.windows.map((w: any) => `- id: ${w.id}, title: ${w.title}, content: ${w.content ? `"${w.content.substring(0,100).replace(/\n/g, ' ').replace(/"/g, '\\"')}"${w.content.length > 100 ? '...' : ''}` : 'none'}`).join('\n')}`
+      : 'No windows are currently open.';
+
     const systemPrompt = `You are Jarvis, an AI assistant that converts natural language commands into structured tool calls.
+
+${uiState}
 
 Available tools:
 ${tools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
 
 Your job is to:
-1. Analyze the user's text input
-2. Identify what actions they want to perform
-3. Convert those actions into appropriate tool calls
-4. Handle complex multi-command requests by breaking them into multiple tool calls
+1. Analyze the user's text input and the current UI state.
+2. Identify what actions they want to perform.
+3. Convert those actions into appropriate tool calls.
+4. When closing a window, use the ID from the list of open windows.
+5. Handle complex multi-command requests by breaking them into multiple tool calls.
 
 For window operations:
 - When opening windows, infer appropriate window types (sticky-note, notification, dialog, settings, general, lesson, quiz, hint, explainer)

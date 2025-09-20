@@ -5,6 +5,17 @@ import { ToolExecutor } from './toolExecutor';
 const taskParser = new TaskParser();
 const toolExecutor = new ToolExecutor();
 
+// Startup diagnostics
+try {
+  const isWorkerScope = typeof self !== 'undefined' && (self as unknown as { importScripts?: unknown }).importScripts !== undefined;
+  // location is undefined in dedicated workers in some environments; guard accesses
+  const href = (typeof location !== 'undefined' && location?.href) ? location.href : 'n/a';
+  const origin = (typeof location !== 'undefined' && (location as any)?.origin) ? (location as any).origin : 'n/a';
+  console.log('[AI Worker] Startup', { isWorkerScope, href, origin });
+} catch {
+  // ignore
+}
+
 self.addEventListener('message', (event) => {
   const { type, data } = event.data;
   
@@ -30,18 +41,23 @@ self.addEventListener('message', (event) => {
   }
 });
 
-async function processTextCommand(textInput: any) {
+async function processTextCommand(data: any) {
   try {
-    const text = typeof textInput === 'string' ? textInput : textInput.text || textInput.command || '';
+    const text = typeof data.text === 'string' ? data.text : '';
+    const uiContext = data.uiContext || {};
     
     if (!text) {
       throw new Error('No text input provided');
     }
     
-    console.log(`[AI Worker] Processing text command: "${text}"`);
+    console.log(`[AI Worker] Processing text command: "${text}"`, {
+      uiContextSummary: {
+        windowsCount: Array.isArray(uiContext?.windows) ? uiContext.windows.length : 0
+      }
+    });
     
     // Parse text to tasks using Cerebras
-    const parseResult = await taskParser.parseTextToTasks(text);
+    const parseResult = await taskParser.parseTextToTasks(text, uiContext);
     
     if (!parseResult.success) {
       throw new Error(parseResult.error || 'Failed to parse text to tasks');
@@ -74,7 +90,7 @@ async function processTextCommand(textInput: any) {
       type: 'AI_ERROR',
       data: { 
         error: error instanceof Error ? error.message : String(error), 
-        textInput,
+        textInput: (typeof data?.text === 'string') ? data.text : undefined,
         type: 'text_command_error'
       }
     });

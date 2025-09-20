@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('[API] /api/cerebras-tasks POST hit');
     const body = await request.json().catch(() => ({}));
     let cerebrasRequest = body?.cerebrasRequest;
 
@@ -65,8 +66,10 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
+    console.log('[API] /api/cerebras-tasks success');
     return Response.json(data);
   } catch (error) {
+    console.error('[API] /api/cerebras-tasks error', error);
     return new Response(JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) }), { status: 500 });
   }
 }

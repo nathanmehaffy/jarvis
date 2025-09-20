@@ -62,7 +62,8 @@ export function ImageDropZone({ onImageUpload }: ImageDropZoneProps) {
   return (
     <div
       className={`
-        relative w-full h-48 border-2 border-dashed rounded-2xl transition-all duration-300 cursor-pointer
+        relative w-16 h-16 border-2 border-dashed rounded-full transition-all duration-300 cursor-pointer
+        flex items-center justify-center
         ${isDragOver 
           ? 'border-blue-400 bg-blue-500/20 scale-105' 
           : 'border-white/30 hover:border-white/50 hover:bg-white/5'
@@ -82,33 +83,23 @@ export function ImageDropZone({ onImageUpload }: ImageDropZoneProps) {
         className="hidden"
       />
       
-      <div className="absolute inset-0 flex flex-col items-center justify-center p-6">
+      <div className="absolute inset-0 flex flex-col items-center justify-center p-2">
         {isUploading ? (
-          <div className="text-center">
-            <div className="w-8 h-8 border-4 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-3"></div>
-            <p className="text-white/80 text-sm">Uploading...</p>
-          </div>
+          <div className="w-8 h-8 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
         ) : (
-          <div className="text-center">
-            <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-4 mx-auto">
-              <svg 
-                className="w-6 h-6 text-white/70" 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth={2} 
-                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" 
-                />
-              </svg>
-            </div>
-            <p className="text-white font-medium mb-2">Drop images here</p>
-            <p className="text-white/60 text-sm">or click to browse</p>
-            <p className="text-white/40 text-xs mt-2">Supports screenshots, photos, and more</p>
-          </div>
+          <svg 
+            className="w-8 h-8 text-white/70" 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              strokeWidth={2} 
+              d="M12 4v16m8-8H4" 
+            />
+          </svg>
         )}
       </div>
     </div>

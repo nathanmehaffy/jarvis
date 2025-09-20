@@ -1,10 +1,10 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { eventBus } from '@/lib/eventBus';
 import type { Task } from './types';
 
 export class AIManager {
   private worker: Worker | null = null;
   private isInitialized = false;
+  private uiContext: any = {};
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
@@ -59,6 +59,10 @@ export class AIManager {
     }
   }
 
+  setUIContext(context: any): void {
+    this.uiContext = context;
+  }
+
   processRequest(request: any): void {
     if (!this.worker) {
       console.warn('AI worker not initialized');
@@ -67,7 +71,7 @@ export class AIManager {
 
     this.worker.postMessage({
       type: 'PROCESS_AI_REQUEST',
-      data: request
+      data: { ...request, uiContext: this.uiContext }
     });
   }
 
@@ -79,7 +83,7 @@ export class AIManager {
 
     this.worker.postMessage({
       type: 'PROCESS_TEXT_COMMAND',
-      data: text
+      data: { text, uiContext: this.uiContext }
     });
   }
 

@@ -7,15 +7,18 @@ import { eventBus } from '@/lib/eventBus';
 
 interface WindowManagerProps {
   children: React.ReactNode;
+  onWindowsChange?: (windows: WindowData[]) => void;
 }
 
 export interface WindowManagerRef {
   openWindow: (windowData: Omit<WindowData, 'isOpen' | 'isMinimized' | 'zIndex'>) => void;
   closeWindow: (windowId: string) => void;
   minimizeWindow: (windowId: string) => void;
+  getWindows: () => WindowData[];
 }
 
-export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({ children }, ref) => {
+export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>((props, ref) => {
+  const { children, onWindowsChange } = props;
   const [state, setState] = useState<WindowManagerState>({
     windows: [],
     activeWindowId: null,
@@ -86,8 +89,15 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
   useImperativeHandle(ref, () => ({
     openWindow,
     closeWindow,
-    minimizeWindow
+    minimizeWindow,
+    getWindows: () => state.windows
   }));
+
+  useEffect(() => {
+    if (onWindowsChange) {
+      onWindowsChange(state.windows);
+    }
+  }, [state.windows, onWindowsChange]);
 
   // Listen for AI/UI events to open/close windows
   useEffect(() => {
@@ -101,6 +111,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
           component: () => (
             <div className="p-4 text-gray-800 text-sm whitespace-pre-wrap">{String(data?.content || '')}</div>
           ),
+          content: String(data?.content || ''),
           x: data?.position?.x ?? 120,
           y: data?.position?.y ?? 120,
           width: data?.size?.width ?? 360,
