@@ -1,7 +1,9 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { eventBus } from '@/lib/eventBus';
+import type { Task } from '@/ai/types';
 
 type OpenSidebar = 'ui' | 'input' | 'ai' | null;
 
@@ -33,13 +35,44 @@ export function DebugSidebar({
   openPreloadedImageWindow 
 }: DebugSidebarProps) {
   const [openSidebar, setOpenSidebar] = useState<OpenSidebar>(null);
+  const [taskQueue, setTaskQueue] = useState<Task[]>([]);
+  const [currentTask, setCurrentTask] = useState<Task | null>(null);
+  const [recentToolCalls, setRecentToolCalls] = useState<any[]>([]);
+
+  useEffect(() => {
+    const listeners = [
+      eventBus.on('ai:task_queue_updated', (tasks: Task[]) => setTaskQueue(tasks)),
+      eventBus.on('ai:task_started', ({ task }: { task: Task }) => {
+        setCurrentTask(task);
+        setTaskQueue(prev => prev.filter(t => t.id !== task.id));
+      }),
+      eventBus.on('ai:task_completed', () => {
+        setCurrentTask(null);
+      }),
+      eventBus.on('ai:task_failed', () => {
+        setCurrentTask(null);
+      }),
+      eventBus.on('ai:tool_call_started', (data: any) => {
+        setRecentToolCalls(prev => [{ ...data, status: 'started', timestamp: Date.now() }, ...prev].slice(0, 5));
+      }),
+      eventBus.on('ai:tool_call_completed', (data: any) => {
+        setRecentToolCalls(prev => 
+          prev.map(call => call.task.id === data.task.id ? { ...call, status: 'completed', result: data.result } : call)
+        );
+      }),
+    ];
+
+    return () => {
+      listeners.forEach(off => off());
+    };
+  }, []);
 
   const toggleSidebar = (sidebar: OpenSidebar) => {
     setOpenSidebar(openSidebar === sidebar ? null : sidebar);
   };
 
   return (
-    <div className="fixed right-0 top-0 h-full bg-gray-800/80 backdrop-blur-sm text-white p-4 w-64 z-20">
+    <div className="fixed right-0 top-0 h-full bg-gray-800/80 backdrop-blur-sm text-white p-4 w-80 z-20 overflow-y-auto">
       <div className="flex flex-col space-y-2">
         <button onClick={() => toggleSidebar('ui')} className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
           UI
@@ -86,6 +119,45 @@ export function DebugSidebar({
           <h2 className="text-lg font-bold">AI State</h2>
           <div className="mt-2 space-y-2 text-sm">
             <div className="flex justify-between"><span>Status:</span> <span className={`px-2 py-0.5 rounded ${aiStatus === 'processing' ? 'bg-yellow-500' : aiStatus === 'error' ? 'bg-rose-600' : 'bg-emerald-600'}`}>{aiStatus}</span></div>
+          </div>
+
+          <div className="mt-4">
+            <h3 className="font-bold">Task Queue ({taskQueue.length})</h3>
+            <ul className="mt-1 space-y-1 text-xs bg-gray-700/50 p-2 rounded">
+              {taskQueue.map(task => (
+                <li key={task.id} className="truncate">{task.tool}: {task.description}</li>
+              ))}
+              {taskQueue.length === 0 && <li className="text-gray-400">Empty</li>}
+            </ul>
+          </div>
+
+          <div className="mt-4">
+            <h3 className="font-bold">Current Task</h3>
+            <div className="mt-1 text-xs bg-gray-700/50 p-2 rounded">
+              {currentTask ? (
+                <div>
+                  <p><strong>ID:</strong> {currentTask.id}</p>
+                  <p><strong>Tool:</strong> {currentTask.tool}</p>
+                  <p><strong>Desc:</strong> {currentTask.description}</p>
+                </div>
+              ) : (
+                <p className="text-gray-400">None</p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <h3 className="font-bold">Recent Tool Calls</h3>
+            <ul className="mt-1 space-y-2 text-xs">
+              {recentToolCalls.map((call, i) => (
+                <li key={i} className="bg-gray-700/50 p-2 rounded">
+                  <p><strong>Tool:</strong> {call.tool} ({call.status})</p>
+                  <p className="truncate"><strong>Params:</strong> {JSON.stringify(call.params)}</p>
+                  {call.status === 'completed' && <p className="truncate"><strong>Result:</strong> {JSON.stringify(call.result)}</p>}
+                </li>
+              ))}
+              {recentToolCalls.length === 0 && <li className="text-gray-400">None</li>}
+            </ul>
           </div>
         </div>
       )}

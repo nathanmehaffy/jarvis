@@ -12,6 +12,7 @@ export interface ExecutionResult {
 
 export class ToolExecutor {
   async executeTasks(tasks: Task[]): Promise<ExecutionResult[]> {
+    eventBus.emit('ai:task_queue_updated', tasks);
     const results: ExecutionResult[] = [];
     
     for (const task of tasks) {
@@ -19,12 +20,14 @@ export class ToolExecutor {
         const result = await this.executeTask(task);
         results.push(result);
       } catch (error) {
-        results.push({
+        const errorResult = {
           taskId: task.id,
           success: false,
           error: error instanceof Error ? error.message : String(error),
           timestamp: Date.now()
-        });
+        };
+        results.push(errorResult);
+        eventBus.emit('ai:task_failed', { task, error: errorResult.error });
       }
     }
     
@@ -32,24 +35,33 @@ export class ToolExecutor {
   }
 
   private async executeTask(task: Task): Promise<ExecutionResult> {
+    eventBus.emit('ai:task_started', { task });
     const startTime = Date.now();
     
     try {
+      let result: ExecutionResult;
       switch (task.tool) {
         case 'open_window':
-          return await this.executeOpenWindow(task);
+          result = await this.executeOpenWindow(task);
+          break;
         
         case 'close_window':
-          return await this.executeCloseWindow(task);
+          result = await this.executeCloseWindow(task);
+          break;
         
         default:
           throw new Error(`Unknown tool: ${task.tool}`);
       }
+      
+      eventBus.emit('ai:task_completed', { task, result });
+      return result;
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      eventBus.emit('ai:task_failed', { task, error: errorMsg });
       return {
         taskId: task.id,
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMsg,
         timestamp: Date.now() - startTime
       };
     }
@@ -57,6 +69,7 @@ export class ToolExecutor {
 
   private async executeOpenWindow(task: Task): Promise<ExecutionResult> {
     const params = task.parameters as OpenWindowParams;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'open_window', params });
     
     // Validate parameters
     if (!params.windowType || !params.context) {
@@ -97,7 +110,7 @@ export class ToolExecutor {
     
     console.log(`[ToolExecutor] Opening ${params.windowType} window:`, windowData);
     
-    return {
+    const result = {
       taskId: task.id,
       success: true,
       result: {
@@ -107,10 +120,13 @@ export class ToolExecutor {
       },
       timestamp: Date.now()
     };
+    eventBus.emit('ai:tool_call_completed', { task, tool: 'open_window', result });
+    return result;
   }
 
   private async executeCloseWindow(task: Task): Promise<ExecutionResult> {
     const params = task.parameters as CloseWindowParams;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'close_window', params });
     
     // Validate parameters
     if (!params.windowId) {
@@ -140,7 +156,7 @@ export class ToolExecutor {
     
     console.log(`[ToolExecutor] Closing window:`, closeData);
     
-    return {
+    const result = {
       taskId: task.id,
       success: true,
       result: {
@@ -149,6 +165,8 @@ export class ToolExecutor {
       },
       timestamp: Date.now()
     };
+    eventBus.emit('ai:tool_call_completed', { task, tool: 'close_window', result });
+    return result;
   }
 
   private generateWindowId(): string {
