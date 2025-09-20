@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { eventBus } from '@/lib/eventBus';
 import { useSpeechTranscription } from './useSpeechTranscription';
-import { CerebrasClient } from '@/ai/cerebrasClient';
+// Cerebras calls removed; this component now only buffers transcript and emits updates
 
 type Status = 'idle' | 'listening' | 'processing' | 'error';
 
@@ -36,10 +36,10 @@ export function VoiceTaskListener() {
   const lastStreamCallAtRef = useRef<number>(0);
   const lastStreamProcessedTextRef = useRef<string>('');
 
-  const cerebrasClient = useMemo(() => new CerebrasClient(), []);
+  // No AI calls here; VoiceTaskListener is now a pure input buffer
 
   const MIN_DEBOUNCE_MS = 0; // retained for potential future use
-  const STREAM_INTERVAL_MS = 2000; // periodic calls during continuous speech
+  const STREAM_INTERVAL_MS = 2000; // periodic checks during continuous speech
   const STILL_SPEAKING_WINDOW_MS = 1500; // treat activity within this as still speaking
   const SILENCE_CONFIRM_MS = 1000; // wait after last final segment to coalesce phrases
   const ENABLE_STREAMING = false; // disable streaming task emission to avoid partial-command actions
@@ -245,13 +245,7 @@ export function VoiceTaskListener() {
     setStatus('processing');
     setLastError('');
 
-    // Count this call immediately for rate limiting
-    setApiCallTimestamps(prev => {
-      const next = cleanOld([...prev, Date.now()]);
-      return next;
-    });
-
-    // Remember how much of the buffer we're sending
+    // Remember how much text we considered at this processing moment
     callStartBufferLengthRef.current = currentBuffer ? currentBuffer.length : 0;
 
     const MAX_PROMPT_CHARS = 2000;
@@ -289,102 +283,18 @@ export function VoiceTaskListener() {
       lastStreamProcessedTextRef.current = latestFullTextRef.current || currentBuffer || '';
     }
 
-    cerebrasClient.extractTasksFromTranscript(rawBase)
-    .then((data) => {
-      // Hard validate: object with tasks (string[]) present and optional remainder (string)
-      if (!data || typeof data !== 'object') {
-        return; // discard
-      }
-      const obj = data;
-      if (!('tasks' in obj) || !Array.isArray(obj.tasks) || !obj.tasks.every(t => typeof t === 'string')) {
-        return; // discard
-      }
-
-      // Only emit tasks when processing finalized speech; suppress streaming-derived actions
-      let tasks: string[] = [];
+    try {
+      // Emit the entire current transcript on natural pause
       if (mode === 'final') {
-        // Deduplicate tasks recently emitted to avoid double-actions across modes
-        const nowTsClean = Date.now();
-        // Clean old entries (> 60s)
-        const recentMap = recentTaskTextsRef.current;
-        for (const [k, v] of recentMap.entries()) {
-          if (nowTsClean - v > 60000) {
-            recentMap.delete(k);
-          }
+        const transcript = (latestFullTextRef.current || currentBuffer || '').trim();
+        if (transcript) {
+          eventBus.emit('input:transcript_updated', { transcript, timestamp: Date.now() });
         }
-
-        const normalize = (s: string) => s.trim().toLowerCase();
-        const incoming = (obj.tasks || []).map(t => t.trim()).filter(t => t.length > 0);
-        tasks = incoming.filter(text => {
-          const key = normalize(text);
-          if (recentMap.has(key)) return false;
-          recentMap.set(key, nowTsClean);
-          return true;
-        });
       }
-      // Sanitize remainder to avoid keeping random noise in the buffer
-      const sanitizeRemainder = (text: string): string => {
-        const t = (text || '').trim().replace(/\s+/g, ' ');
-        if (!t) return '';
-        if (t.length <= 2) return '';
-        const lower = t.toLowerCase();
-        // Drop if mostly filler or conversational
-        const fillerTokens = [
-          'uh','um','erm','hmm','like','you know','i mean','ok','okay','yeah','right','so','anyway','basically','kinda','sort of','sorta','yep','nope'
-        ];
-        const tokens = lower.split(/\s+/);
-        const fillerCount = tokens.filter(tok => fillerTokens.includes(tok)).length;
-        if (tokens.length > 0 && (fillerCount / tokens.length) > 0.5) return '';
-        // Drop if too many non-word symbols
-        const nonWordRatio = ((t.match(/[^a-zA-Z0-9\s.,;:!?'"()\-]/g) || []).length) / t.length;
-        if (nonWordRatio > 0.2) return '';
-        // Drop if short and lacks a verb-like indicator
-        if (tokens.length <= 3 && !/(open|close|create|add|remove|delete|show|hide|start|stop|play|pause|scroll|switch|go|search|find|set|update|rename|move|zoom|pin|unpin|note|write|save)/i.test(t)) {
-          return '';
-        }
-        return t;
-      };
-      const remainderRaw = typeof obj.remainder === 'string' ? obj.remainder : '';
-      const remainder = sanitizeRemainder(remainderRaw);
-
-      if (mode === 'final' && tasks.length > 0) {
-        const nowTs = Date.now();
-        eventBus.emit('input:tasks', {
-          tasks: tasks.map((text, index) => ({
-            id: (globalThis.crypto && 'randomUUID' in globalThis.crypto) ? crypto.randomUUID() : Math.random().toString(36).slice(2),
-            text,
-            timestamp: nowTs + index,
-            source: 'voice'
-          }))
-        });
-      }
-
-      // Update buffer only for final; keep buffer intact for streaming
-      if (mode === 'final') {
-        const suffix = bufferRef.current.slice(callStartBufferLengthRef.current);
-        const newBuffer = [remainder || '', suffix || ''].filter(Boolean).join(' ').trim();
-        bufferRef.current = newBuffer;
-        setBuffer(newBuffer);
-        // Align stream pointer with latest full text after buffer update
-        lastStreamProcessedTextRef.current = latestFullTextRef.current || bufferRef.current || '';
-      }
-    })
-    .catch((error) => {
-      // Retry after 5 seconds; keep buffer untouched
-      setStatus('error');
-      setLastError('Cerebras API error - retrying...');
-      window.setTimeout(() => {
-        if (mode === 'final') {
-          if (bufferRef.current) scheduleProcessing();
-        }
-      }, 5000);
-    })
-    .finally(() => {
+    } finally {
       processingRef.current = false;
       setStatus(isListening ? 'listening' : 'idle');
-      
-      // For final mode, do not auto-loop; subsequent calls are triggered by new speech or silence confirm
-    });
+    }
   }, [isListening, cleanOld, scheduleProcessing]);
 
   // Render nothing; this component orchestrates voice -> tasks

@@ -46,21 +46,22 @@ export function MainUI() {
       eventBus.on('ai:text_command_processed', () => setAiStatus('ready')),
       eventBus.on('ai:ai_response_generated', () => setAiStatus('ready')),
       eventBus.on('ai:error', () => setAiStatus('error')),
-      eventBus.on('window:opened', (data: any) => {
-        if (data?.id) {
-          setOpenWindows(prev => new Set([...prev, data.id]));
+      eventBus.on('window:opened', (data: { id?: string }) => {
+        if (typeof data?.id === 'string') {
+          setOpenWindows(prev => new Set<string>([...prev, data.id as string]));
         }
       }),
-      eventBus.on('window:closed', (data: any) => {
-        if (data?.windowId) {
+      eventBus.on('window:closed', (data: { windowId?: string }) => {
+        if (typeof data?.windowId === 'string') {
+          const id = data.windowId as string;
           setOpenWindows(prev => {
             const newSet = new Set(prev);
-            newSet.delete(data.windowId);
+            newSet.delete(id);
             return newSet;
           });
           setMinimizedWindows(prev => {
             const newSet = new Set(prev);
-            newSet.delete(data.windowId);
+            newSet.delete(id);
             return newSet;
           });
         }

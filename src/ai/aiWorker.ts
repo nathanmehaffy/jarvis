@@ -5,6 +5,38 @@ import { ToolExecutor } from './toolExecutor';
 const taskParser = new TaskParser();
 const toolExecutor = new ToolExecutor();
 
+interface ActionRecord {
+  actionId: string;
+  tool: string;
+  parameters: Record<string, any>;
+  sourceText: string;
+  timestamp: number;
+}
+
+interface ConversationState {
+  transcriptHistory: string;
+  actionHistory: ActionRecord[];
+  uiContext: any;
+}
+
+const state: ConversationState = {
+  transcriptHistory: '',
+  actionHistory: [],
+  uiContext: {}
+};
+
+function updateTranscriptHistory(newTranscript: string) {
+  const combined = newTranscript || '';
+  state.transcriptHistory = combined.length > 2000 ? combined.slice(-2000) : combined;
+}
+
+function appendActionRecord(record: ActionRecord) {
+  state.actionHistory.push(record);
+  if (state.actionHistory.length > 10) {
+    state.actionHistory = state.actionHistory.slice(-10);
+  }
+}
+
 // Startup diagnostics
 try {
   const isWorkerScope = typeof self !== 'undefined' && (self as unknown as { importScripts?: unknown }).importScripts !== undefined;
@@ -20,6 +52,9 @@ self.addEventListener('message', (event) => {
   const { type, data } = event.data;
   
   switch (type) {
+    case 'SET_UI_CONTEXT':
+      try { state.uiContext = data || {}; } catch {}
+      break;
     case 'PROCESS_AI_REQUEST':
       processAIRequest(data);
       break;
@@ -43,55 +78,62 @@ self.addEventListener('message', (event) => {
 
 async function processTextCommand(data: any) {
   try {
-    // Accept both object payloads ({ text, uiContext }) and raw string payloads
-    const normalized = ((): { text: string; uiContext: any } => {
-      if (typeof data === 'string') {
-        return { text: data, uiContext: {} };
-      }
-      if (data && typeof data === 'object') {
-        return { text: typeof data.text === 'string' ? data.text : '', uiContext: data.uiContext || {} };
-      }
-      return { text: '', uiContext: {} };
-    })();
-
-    const text = normalized.text;
-    const uiContext = normalized.uiContext;
-    
-    if (!text) {
-      throw new Error('No text input provided');
+    // New payload accepts { transcript, uiContext? } or string
+    const transcript = (typeof data?.transcript === 'string') ? data.transcript : (typeof data === 'string' ? data : '');
+    if (!transcript) {
+      throw new Error('No transcript provided');
     }
-    
-    console.log(`[AI Worker] Processing text command: "${text}"`, {
+    if (data && typeof data === 'object' && data.uiContext) {
+      state.uiContext = data.uiContext;
+    }
+
+    updateTranscriptHistory(transcript);
+
+    console.log('[AI Worker] Processing transcript', {
       uiContextSummary: {
-        windowsCount: Array.isArray(uiContext?.windows) ? uiContext.windows.length : 0
+        windowsCount: Array.isArray(state.uiContext?.windows) ? state.uiContext.windows.length : 0
       }
     });
-    
-    // Parse text to tasks using Cerebras
-    const parseResult = await taskParser.parseTextToTasks(text, uiContext);
-    
-    if (!parseResult.success) {
-      throw new Error(parseResult.error || 'Failed to parse text to tasks');
+
+    // Ask parser for new tool calls based on ConversationState
+    const parseResult: any = await taskParser.parseTextToTasks({
+      transcript: state.transcriptHistory,
+      actionHistory: state.actionHistory,
+      uiContext: state.uiContext
+    } as any);
+
+    const newCalls: Array<{ tool: string; parameters: any; sourceText: string }> = Array.isArray(parseResult?.new_tool_calls) ? parseResult.new_tool_calls : [];
+
+    const executionResults: any[] = [];
+    for (const call of newCalls) {
+      const record: ActionRecord = {
+        actionId: generateId(),
+        tool: call.tool,
+        parameters: call.parameters,
+        sourceText: call.sourceText,
+        timestamp: Date.now()
+      };
+      try {
+        const res = await toolExecutor.executeTasks([
+          { id: record.actionId, tool: record.tool, parameters: record.parameters, description: record.tool }
+        ], state.uiContext);
+        executionResults.push(...res);
+      } finally {
+        appendActionRecord(record);
+      }
     }
-    
-    console.log(`[AI Worker] Parsed ${parseResult.tasks.length} tasks:`, parseResult.tasks);
-    
-    // Execute the tasks
-    const executionResults = await toolExecutor.executeTasks(parseResult.tasks);
-    
-    const response = {
-      id: generateId(),
-      success: true,
-      originalText: text,
-      tasks: parseResult.tasks,
-      executionResults: executionResults,
-      processingTime: parseResult.timestamp,
-      timestamp: Date.now()
-    };
-    
+
     self.postMessage({
       type: 'TEXT_COMMAND_PROCESSED',
-      data: response
+      data: {
+        id: generateId(),
+        success: true,
+        originalText: transcript,
+        tasks: newCalls,
+        executionResults,
+        processingTime: 0,
+        timestamp: Date.now()
+      }
     });
     
   } catch (error) {
@@ -101,7 +143,7 @@ async function processTextCommand(data: any) {
       type: 'AI_ERROR',
       data: { 
         error: error instanceof Error ? error.message : String(error), 
-        textInput: (typeof data?.text === 'string') ? data.text : undefined,
+        textInput: (typeof data?.transcript === 'string') ? data.transcript : undefined,
         type: 'text_command_error'
       }
     });

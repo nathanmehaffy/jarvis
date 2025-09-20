@@ -25,7 +25,7 @@ export interface CerebrasTool {
 export interface Task {
   id: string;
   tool: string;
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
   description: string;
 }
 
@@ -35,7 +35,7 @@ export interface WindowContext {
   type?: 'notification' | 'dialog' | 'settings' | 'sticky-note' | 'general' | 'lesson' | 'quiz' | 'hint' | 'explainer';
   position?: { x: number; y: number };
   size?: { width: number; height: number };
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface OpenWindowParams {

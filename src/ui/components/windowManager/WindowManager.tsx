@@ -2,7 +2,6 @@
 
 import { useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { Window } from '../window';
-import { ImageWindow } from '../imageWindow';
 import { WindowData, WindowManagerState } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
 
@@ -12,7 +11,7 @@ interface WindowManagerProps {
 }
 
 export interface WindowManagerRef {
-  openWindow: (windowData: Omit<WindowData, 'isOpen' | 'isMinimized' | 'zIndex'>) => void;
+  openWindow: (windowData: Omit<WindowData, 'isOpen' | 'zIndex'>) => void;
   closeWindow: (windowId: string) => void;
   minimizeWindow: (windowId: string) => void;
   restoreWindow: (windowId: string) => void;
@@ -341,30 +340,6 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
       {/* Render Windows */}
       {state.windows.map(window => {
         const WindowComponent = window.component;
-        const isImageWindow = window.id.startsWith('image-viewer-');
-        
-        const imageUrl = window.imageUrl || '';
-        
-        if (isImageWindow) {
-          return (
-            <ImageWindow
-              key={window.id}
-              id={window.id}
-              title={window.title}
-              initialX={window.x}
-              initialY={window.y}
-              width={window.width}
-              height={window.height}
-              isActive={state.activeWindowId === window.id}
-              onClose={() => closeWindow(window.id)}
-              onFocus={() => focusWindow(window.id)}
-              imageUrl={imageUrl}
-            >
-              <WindowComponent />
-            </ImageWindow>
-          );
-        }
-        
         return (
           <Window
             key={window.id}
@@ -374,6 +349,9 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
             initialY={window.y}
             width={window.width}
             height={window.height}
+            headerStyle={window.id.startsWith('image-viewer-') ? 'minimal' : 'standard'}
+            lockAspectRatio={window.id.startsWith('image-viewer-')}
+            resizable
             isActive={state.activeWindowId === window.id}
             isMinimized={window.isMinimized}
             isFullscreen={window.isFullscreen}
