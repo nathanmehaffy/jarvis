@@ -44,7 +44,8 @@ export interface OpenWindowParams {
 }
 
 export interface CloseWindowParams {
-  windowId: string;
+  windowId?: string; // direct id when known
+  selector?: 'newest' | 'latest' | 'oldest' | 'active' | 'all'; // semantic selector
 }
 
 export interface CerebrasRequest {

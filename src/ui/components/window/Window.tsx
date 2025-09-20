@@ -12,6 +12,7 @@ interface WindowProps {
 	height: number;
 	isActive: boolean;
 	onClose: () => void;
+	onMinimize?: () => void;
 	onFocus: () => void;
 }
 
@@ -25,11 +26,13 @@ export function Window({
 	height,
 	isActive,
 	onClose,
+	onMinimize,
 	onFocus
 }: WindowProps) {
 	const windowRef = useRef<HTMLDivElement>(null);
 	const [position, setPosition] = useState({ x: initialX, y: initialY });
 	const [size, setSize] = useState({ width, height });
+	const [isMinimized, setIsMinimized] = useState(false);
 	const isDraggingRef = useRef(false);
 	const dragOffsetRef = useRef({ x: 0, y: 0 });
 
@@ -40,6 +43,20 @@ export function Window({
 	useEffect(() => {
 		setSize({ width, height });
 	}, [width, height]);
+
+	const handleMinimize = () => {
+		setIsMinimized(true);
+		onMinimize?.();
+	};
+
+	const handleClose = () => {
+		onClose();
+	};
+
+	const handleRestore = () => {
+		setIsMinimized(false);
+		onFocus();
+	};
 
 	const onMouseDown = (e: React.MouseEvent) => {
 		onFocus();
@@ -74,17 +91,37 @@ export function Window({
 			style={{ left: position.x, top: position.y, width: size.width, height: size.height }}
 			onMouseDown={() => onFocus()}
 		>
-			<div className={`flex items-center justify-between px-3 py-2 select-none cursor-move ${isActive ? 'bg-gray-100' : 'bg-gray-50'}`} onMouseDown={onMouseDown}>
+			<div
+				className={`flex items-center justify-between px-3 py-2 select-none ${isMinimized ? 'cursor-pointer' : 'cursor-move'} ${isActive ? 'bg-gray-100' : 'bg-gray-50'}`}
+				onMouseDown={isMinimized ? handleRestore : onMouseDown}
+				title={isMinimized ? 'Click to restore' : 'Drag to move'}
+			>
 				<div className="flex items-center space-x-2">
-					<span className="w-2.5 h-2.5 rounded-full bg-red-400"></span>
-					<span className="w-2.5 h-2.5 rounded-full bg-yellow-400"></span>
-					<span className="w-2.5 h-2.5 rounded-full bg-green-400"></span>
+					<button
+						onClick={handleClose}
+						className="w-3 h-3 rounded-full bg-red-400 hover:bg-red-500 flex items-center justify-center"
+						title="Close window"
+					>
+						<span className="text-white text-xs">×</span>
+					</button>
+					<button
+						onClick={handleMinimize}
+						className="w-3 h-3 rounded-full bg-yellow-400 hover:bg-yellow-500 flex items-center justify-center"
+						title="Minimize window"
+					>
+						<span className="text-white text-xs">−</span>
+					</button>
+					<span className="w-3 h-3 rounded-full bg-green-400"></span>
 					<span className="ml-2 text-sm font-medium text-gray-800">{title}</span>
 				</div>
-				<button onClick={onClose} className="px-2 py-1 text-xs rounded bg-gray-200 hover:bg-gray-300">Close</button>
 			</div>
-			<div className="w-full h-[calc(100%-36px)] bg-white">
-				{children}
+			<div className={`w-full bg-white ${isMinimized ? 'h-8 overflow-hidden' : 'h-[calc(100%-36px)]'}`}>
+				{!isMinimized && children}
+				{isMinimized && (
+					<div className="flex items-center justify-center h-full text-gray-500 text-xs">
+						Minimized
+					</div>
+				)}
 			</div>
 		</div>
 	);

@@ -10,8 +10,9 @@ interface WindowManagerProps {
 }
 
 export interface WindowManagerRef {
-  openWindow: (windowData: Omit<WindowData, 'isOpen' | 'zIndex'>) => void;
+  openWindow: (windowData: Omit<WindowData, 'isOpen' | 'isMinimized' | 'zIndex'>) => void;
   closeWindow: (windowId: string) => void;
+  minimizeWindow: (windowId: string) => void;
 }
 
 export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({ children }, ref) => {
@@ -21,7 +22,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
     nextZIndex: 10
   });
 
-  const openWindow = (windowData: Omit<WindowData, 'isOpen' | 'zIndex'>) => {
+  const openWindow = (windowData: Omit<WindowData, 'isOpen' | 'isMinimized' | 'zIndex'>) => {
     setState(prev => ({
       ...prev,
       windows: [
@@ -29,12 +30,17 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
         {
           ...windowData,
           isOpen: true,
+          isMinimized: false,
           zIndex: prev.nextZIndex
         }
       ],
       activeWindowId: windowData.id,
       nextZIndex: prev.nextZIndex + 1
     }));
+    // Sync with global registry for selector-based operations
+    try {
+      eventBus.emit('window:opened', { id: windowData.id, type: 'ui', title: windowData.title });
+    } catch {}
   };
 
   const closeWindow = (windowId: string) => {
@@ -42,6 +48,22 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
       ...prev,
       windows: prev.windows.filter(w => w.id !== windowId),
       activeWindowId: prev.activeWindowId === windowId ? null : prev.activeWindowId
+    }));
+    // Sync with global registry
+    try {
+      eventBus.emit('window:closed', { windowId });
+    } catch {}
+  };
+
+  const minimizeWindow = (windowId: string) => {
+    setState(prev => ({
+      ...prev,
+      windows: prev.windows.map(w =>
+        w.id === windowId
+          ? { ...w, isMinimized: true }
+          : w
+      ),
+      activeWindowId: null
     }));
   };
 
@@ -56,11 +78,15 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
       ),
       nextZIndex: prev.nextZIndex + 1
     }));
+    try {
+      eventBus.emit('window:focused', { windowId });
+    } catch {}
   };
 
   useImperativeHandle(ref, () => ({
     openWindow,
-    closeWindow
+    closeWindow,
+    minimizeWindow
   }));
 
   // Listen for AI/UI events to open/close windows
@@ -114,6 +140,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
             height={window.height}
             isActive={state.activeWindowId === window.id}
             onClose={() => closeWindow(window.id)}
+            onMinimize={() => minimizeWindow(window.id)}
             onFocus={() => focusWindow(window.id)}
           >
             <WindowComponent />

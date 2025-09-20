@@ -3,6 +3,7 @@ export interface WindowData {
   title: string;
   component: React.ComponentType;
   isOpen: boolean;
+  isMinimized: boolean;
   x: number;
   y: number;
   width: number;

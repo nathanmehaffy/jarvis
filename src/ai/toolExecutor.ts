@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Task, OpenWindowParams, CloseWindowParams } from './types';
 import { eventBus } from '@/lib/eventBus';
+import { windowRegistry } from './windowRegistry';
 
 export interface ExecutionResult {
   taskId: string;
@@ -111,15 +112,44 @@ export class ToolExecutor {
 
   private async executeCloseWindow(task: Task): Promise<ExecutionResult> {
     const params = task.parameters as CloseWindowParams;
-    
-    // Validate parameters
-    if (!params.windowId) {
-      throw new Error('Missing required parameter for close_window: windowId is required');
+
+    // Resolve selector to actual window ID if needed
+    let targetWindowId = params.windowId;
+    if (!targetWindowId && params.selector) {
+      if (params.selector === 'newest' || params.selector === 'latest') {
+        targetWindowId = windowRegistry.getNewest()?.id;
+      } else if (params.selector === 'oldest') {
+        targetWindowId = windowRegistry.getOldest()?.id;
+      } else if (params.selector === 'active') {
+        const reg: any = windowRegistry as any;
+        targetWindowId = reg.getActive ? reg.getActive()?.id : undefined;
+      } else if (params.selector === 'all') {
+        // Broadcast close for each known window
+        const reg: any = windowRegistry as any;
+        const all: Array<{ id: string }> = (reg.getAll ? reg.getAll() : []) || [];
+        all.forEach(w => {
+          const closeData = { windowId: w.id, timestamp: Date.now() };
+          eventBus.emit('ui:close_window', closeData);
+          eventBus.emit('window:closed', closeData);
+        });
+        console.log(`[ToolExecutor] Closing all windows (${all.length})`);
+        return {
+          taskId: task.id,
+          success: true,
+          result: { closedAll: true, count: all.length },
+          timestamp: Date.now()
+        };
+      }
     }
-    
+
+    // Validate parameters
+    if (!targetWindowId) {
+      throw new Error('No target window found to close');
+    }
+
     // Emit event to UI for window closure
     const closeData = {
-      windowId: params.windowId,
+      windowId: targetWindowId,
       timestamp: Date.now()
     };
     
@@ -144,7 +174,7 @@ export class ToolExecutor {
       taskId: task.id,
       success: true,
       result: {
-        windowId: params.windowId,
+        windowId: targetWindowId,
         closed: true
       },
       timestamp: Date.now()

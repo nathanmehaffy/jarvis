@@ -63,9 +63,13 @@ export const AVAILABLE_TOOLS: Tool[] = [
         windowId: {
           type: 'string',
           description: 'The unique identifier of the window to close'
+        },
+        selector: {
+          type: 'string',
+          description: 'Semantic selector when ID is unknown (newest/latest/oldest/active/all)'
         }
       },
-      required: ['windowId']
+      required: []
     }
   }
 ];

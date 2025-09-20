@@ -14,6 +14,18 @@ export class TaskParser {
     try {
       const startTime = Date.now();
       
+      // Early handling: if the command is clearly a close/dismiss intent,
+      // short-circuit Cerebras and return a direct close task to avoid
+      // the model turning it into a note.
+      const earlyClose = this.detectCloseCommand(text);
+      if (earlyClose.length > 0) {
+        return {
+          success: true,
+          tasks: earlyClose,
+          timestamp: Date.now() - startTime
+        };
+      }
+
       // Use Cerebras to process the natural language input
       const response = await this.cerebrasClient.processTextToTasks(text, AVAILABLE_TOOLS);
       
@@ -76,15 +88,71 @@ export class TaskParser {
     }
   }
 
+  private detectCloseCommand(text: string): Task[] {
+    try {
+      const lower = text.toLowerCase();
+      const hasCloseVerb = /(close|dismiss|hide|remove|exit|quit|shut|shutdown|shut\s*down)/i.test(lower);
+      const mentionsWindow = /(window|popup|dialog|note|all\s+windows|windows)/i.test(lower);
+      const pronounTarget = /(\bthis\b|\bcurrent\b|\bfocused\b|\bit\b|\bthat\b)/i.test(lower);
+      if (!hasCloseVerb) return [];
+      
+      // Must have close verb AND (window mention OR pronoun target)
+      if (!mentionsWindow && !pronounTarget) return [];
+
+      // Selector-based phrases
+      let selector: 'newest' | 'latest' | 'oldest' | 'active' | 'all' | undefined;
+      if (/\b(newest|latest)\b/i.test(text)) selector = 'newest';
+      else if (/\boldest\b/i.test(text)) selector = 'oldest';
+      else if (pronounTarget || /\bcurrent\b|\bfocused\b/i.test(text)) selector = 'active';
+      else if (/\b(all\s+windows|close\s+all|close\s+everything|dismiss\s+all)\b/i.test(lower)) selector = 'all';
+
+      // Direct ID patterns (e.g., "close window abc123")
+      // Capture an identifier following the window keyword or at the end
+      let windowId: string | undefined;
+      const idPatterns: RegExp[] = [
+        /(?:close|dismiss|hide|shut(?:\s*down)?)\s+(?:the\s+)?(?:window|popup|dialog|note)\s+([A-Za-z0-9_-]+)/i,
+        /(?:window|popup|dialog|note)\s+([A-Za-z0-9_-]+)\s*(?:please)?\s*(?:close|dismiss|hide|shut(?:\s*down)?)?/i,
+      ];
+      for (const p of idPatterns) {
+        const m = text.match(p);
+        if (m && m[1]) {
+          windowId = m[1].trim();
+          break;
+        }
+      }
+
+      // If we only have a close intent with no id/selector, default to newest
+      if (!windowId && !selector && hasCloseVerb) selector = 'newest';
+
+      if (!windowId && !selector) return [];
+
+      const params: any = {};
+      if (windowId) params.windowId = windowId;
+      if (selector) params.selector = selector;
+
+      return [
+        {
+          id: this.generateTaskId(),
+          tool: 'close_window',
+          parameters: params,
+          description: this.generateTaskDescription('close_window', params)
+        }
+      ];
+    } catch {
+      return [];
+    }
+  }
+
   private fallbackParsing(text: string): Task[] {
     const tasks: Task[] = [];
     const lowerText = text.toLowerCase();
     
-    // Simple pattern matching for common commands
+    // Open/create commands
     if (lowerText.includes('open') || lowerText.includes('create') || lowerText.includes('show') || lowerText.includes('start')) {
       let windowType = 'general';
       let content = '';
       let metadata: Record<string, any> | undefined = undefined;
+      let count = 1;
       
       if (lowerText.includes('sticky note') || lowerText.includes('note')) {
         windowType = 'sticky-note';
@@ -124,36 +192,56 @@ export class TaskParser {
         windowType = 'settings';
         content = 'Settings';
       }
+
+      // Parse counts: e.g., "open 7 windows saying cheese", "open seven windows" (basic digits only here)
+      const countMatch = text.match(/open\s+(\d{1,2})\s+(?:window|windows)/i);
+      if (countMatch) {
+        const n = parseInt(countMatch[1], 10);
+        if (!Number.isNaN(n) && n > 1 && n <= 20) count = n;
+      }
       
-      tasks.push({
-        id: this.generateTaskId(),
-        tool: 'open_window',
-        parameters: {
-          windowType: windowType,
-          context: {
-            title: this.extractTitle(text) || this.capitalizeFirst(windowType),
-            content: content || 'Window content',
-            type: windowType,
-            metadata
-          }
-        },
-        description: `Open ${windowType} window`
-      });
-    }
-    
-    if (lowerText.includes('close')) {
-      // Look for window ID patterns
-      const idMatch = text.match(/(?:window|id)\s+(\w+)/i);
-      const windowId = idMatch ? idMatch[1] : 'unknown';
-      
-      tasks.push({
-        id: this.generateTaskId(),
-        tool: 'close_window',
-        parameters: {
-          windowId: windowId
-        },
-        description: `Close window ${windowId}`
-      });
+      // Generic content extraction for phrases like: say "...", with content "...", display "..."
+      if (!content) {
+        const sayPattern = /(?:say|that\s+says|saying|with\s+(?:content|text)|message|display|show\s+text)\s*["']([^"']+)["']/i;
+        const sayMatch = text.match(sayPattern);
+        if (sayMatch) {
+          content = sayMatch[1].trim();
+        }
+      }
+
+      // Unquoted say/saying patterns: capture text after say/saying until end
+      if (!content) {
+        const sayPlainPattern = /(?:say|saying|that\s+says)\s+(.+?)$/i;
+        const sayPlainMatch = text.match(sayPlainPattern);
+        if (sayPlainMatch) {
+          content = sayPlainMatch[1].trim();
+        }
+      }
+
+      // Fallback: if still no content, use first quoted string in the command as content
+      if (!content) {
+        const anyQuoteMatch = text.match(/"([^\"]+)"|'([^']+)'/);
+        if (anyQuoteMatch) {
+          content = (anyQuoteMatch[1] || anyQuoteMatch[2] || '').trim();
+        }
+      }
+
+      for (let i = 0; i < count; i++) {
+        tasks.push({
+          id: this.generateTaskId(),
+          tool: 'open_window',
+          parameters: {
+            windowType: windowType,
+            context: {
+              title: this.extractTitle(text) || this.capitalizeFirst(windowType),
+              content: content || 'Window content',
+              type: windowType,
+              metadata
+            }
+          },
+          description: `Open ${windowType} window`
+        });
+      }
     }
     
     return tasks;

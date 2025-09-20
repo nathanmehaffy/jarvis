@@ -34,30 +34,21 @@ export class AIManager {
       this.isInitialized = true;
       eventBus.emit('ai:initialized');
 
-      // Bridge: when input emits parsed tasks, forward to AI worker as a text command-like batch
+      // Bridge: when input emits parsed task strings, forward each to worker for parsing & execution
       eventBus.on('input:tasks', (data: { tasks: Array<{ id: string; text: string }> }) => {
         try {
-          const tasks: Task[] = (data?.tasks || []).map((t, index) => ({
-            id: t.id || `${Date.now()}_${index}`,
-            tool: 'open_window',
-            parameters: {
-              windowType: 'general',
-              context: {
-                title: 'Task',
-                content: t.text,
-                type: 'general'
-              }
-            },
-            description: `Open window for: ${t.text}`
-          }));
-
-          // Indicate processing started
-          eventBus.emit('ai:processing', { count: tasks.length });
-
-          this.worker?.postMessage({
-            type: 'PROCESS_AI_REQUEST',
-            data: { tasks }
-          });
+          const items = Array.isArray(data?.tasks) ? data.tasks : [];
+          if (items.length === 0) return;
+          eventBus.emit('ai:processing', { count: items.length });
+          for (const item of items) {
+            const text = item?.text ?? '';
+            if (typeof text === 'string' && text.trim().length > 0) {
+              this.worker?.postMessage({
+                type: 'PROCESS_TEXT_COMMAND',
+                data: text
+              });
+            }
+          }
         } catch (e) {
           eventBus.emit('ai:error', e);
         }
