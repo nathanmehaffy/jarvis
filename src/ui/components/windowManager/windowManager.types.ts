@@ -8,6 +8,7 @@ export interface WindowData {
   width: number;
   height: number;
   zIndex: number;
+  imageUrl?: string;
 }
 
 export interface WindowManagerState {

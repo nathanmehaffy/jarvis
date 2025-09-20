@@ -2,6 +2,7 @@
 
 import { useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { Window } from '../window';
+import { ImageWindow } from '../imageWindow';
 import { WindowData, WindowManagerState } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
 
@@ -14,7 +15,7 @@ export interface WindowManagerRef {
   closeWindow: (windowId: string) => void;
 }
 
-export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({ children }, ref) => {
+export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(function WindowManager({ children }, ref) {
   const [state, setState] = useState<WindowManagerState>({
     windows: [],
     activeWindowId: null,
@@ -66,7 +67,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
   // Listen for AI/UI events to open/close windows
   useEffect(() => {
     const unsubs = [
-      eventBus.on('ui:open_window', (data: any) => {
+      eventBus.on('ui:open_window', (data: { id?: string; title?: string; content?: string; position?: { x?: number; y?: number }; size?: { width?: number; height?: number } }) => {
         const id = data?.id || `win_${Date.now()}`;
         const title = data?.title || 'Window';
         openWindow({
@@ -81,7 +82,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
           height: data?.size?.height ?? 240
         });
       }),
-      eventBus.on('ui:close_window', (data: any) => {
+      eventBus.on('ui:close_window', (data: { windowId?: string }) => {
         if (data?.windowId) {
           closeWindow(data.windowId);
         }
@@ -91,7 +92,10 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
   }, []);
 
   return (
-    <div className="relative w-full h-full">
+    <div 
+      className="relative w-full h-full"
+      onClick={() => setState(prev => ({ ...prev, activeWindowId: null }))}
+    >
       {/* Desktop Background */}
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600">
         <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/20 via-transparent to-cyan-300/20"></div>
@@ -103,6 +107,31 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
       {/* Render Windows */}
       {state.windows.map(window => {
         const WindowComponent = window.component;
+        const isImageWindow = window.id.startsWith('image-viewer-');
+        
+        // Extract image URL from the window data
+        const imageUrl = window.imageUrl || '';
+        
+        if (isImageWindow) {
+          return (
+            <ImageWindow
+              key={window.id}
+              id={window.id}
+              title={window.title}
+              initialX={window.x}
+              initialY={window.y}
+              width={window.width}
+              height={window.height}
+              isActive={state.activeWindowId === window.id}
+              onClose={() => closeWindow(window.id)}
+              onFocus={() => focusWindow(window.id)}
+              imageUrl={imageUrl}
+            >
+              <WindowComponent />
+            </ImageWindow>
+          );
+        }
+        
         return (
           <Window
             key={window.id}

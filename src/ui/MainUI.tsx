@@ -23,6 +23,7 @@ export function MainUI() {
   const [inputStatus, setInputStatus] = useState<'idle' | 'listening' | 'processing' | 'error'>('idle');
   const [aiStatus, setAiStatus] = useState<'idle' | 'processing' | 'ready' | 'error'>('idle');
   const [apiBudget, setApiBudget] = useState<{ used: number; nextMs: number | null }>({ used: 0, nextMs: null });
+  const [isImageDropMinimized, setIsImageDropMinimized] = useState(false);
   useEffect(() => {
     aiManager.initialize();
     inputManager.initialize();
@@ -31,8 +32,8 @@ export function MainUI() {
       eventBus.on('input:initialized', () => setInputStatus('idle')),
       eventBus.on('speech:started', () => setInputStatus('listening')),
       eventBus.on('speech:ended', () => setInputStatus('idle')),
-      eventBus.on('input:voice_debug', (d: any) => {
-        setInputStatus((d?.status as any) || 'idle');
+      eventBus.on('input:voice_debug', (d: { status?: string; apiCallsUsedLastMinute?: number; nextCallInMs?: number }) => {
+        setInputStatus((d?.status as 'idle' | 'listening' | 'processing' | 'error') || 'idle');
         setApiBudget({ used: d?.apiCallsUsedLastMinute ?? 0, nextMs: d?.nextCallInMs ?? null });
       }),
       eventBus.on('ai:initialized', () => setAiStatus('ready')),
@@ -94,15 +95,57 @@ export function MainUI() {
 
   const openImageViewerWindow = (imageUrl: string, imageName: string) => {
     const windowId = `image-viewer-${Date.now()}`;
-    windowManagerRef.current?.openWindow({
-      id: windowId,
-      title: `Image: ${imageName}`,
-      component: () => <ImageViewer imageUrl={imageUrl} imageName={imageName} />,
-      x: 400,
-      y: 300,
-      width: 700,
-      height: 500
-    });
+    
+    // Calculate window dimensions based on image proportions
+    const img = new Image();
+    img.onload = () => {
+      // Get screen dimensions and set maximum to half the screen size
+      const screenWidth = window.innerWidth;
+      const screenHeight = window.innerHeight;
+      const maxWidth = Math.min(800, screenWidth / 2);
+      const maxHeight = Math.min(600, screenHeight / 2);
+      
+      const aspectRatio = img.width / img.height;
+      
+      let width, height;
+      if (aspectRatio > 1) {
+        // Landscape image
+        width = Math.min(maxWidth, img.width);
+        height = width / aspectRatio;
+        
+        // If height exceeds max, scale down
+        if (height > maxHeight) {
+          height = maxHeight;
+          width = height * aspectRatio;
+        }
+      } else {
+        // Portrait or square image
+        height = Math.min(maxHeight, img.height);
+        width = height * aspectRatio;
+        
+        // If width exceeds max, scale down
+        if (width > maxWidth) {
+          width = maxWidth;
+          height = width / aspectRatio;
+        }
+      }
+      
+      // Ensure minimum dimensions
+      width = Math.max(width, 300);
+      height = Math.max(height, 200);
+      
+      windowManagerRef.current?.openWindow({
+        id: windowId,
+        title: `Image: ${imageName}`,
+        component: () => <ImageViewer imageUrl={imageUrl} imageName={imageName} windowId={windowId} />,
+        x: 400,
+        y: 300,
+        width: Math.round(width),
+        height: Math.round(height),
+        imageUrl: imageUrl
+      });
+    };
+    img.src = imageUrl;
   };
 
   const handleImageUpload = (imageUrl: string, imageName: string) => {
@@ -158,14 +201,43 @@ export function MainUI() {
         {/* Voice listener */}
         <VoiceTaskListener />
         
-        {/* Image Drop Zone - Right Side */}
-        <div className="absolute top-6 right-6 z-10">
-          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-6 text-white shadow-2xl mb-6 w-64">
-            <h2 className="text-lg font-semibold mb-4 text-center break-words">Image Upload</h2>
-            <ImageDropZone onImageUpload={handleImageUpload} />
-          </div>
+        {/* Image Drop Zone - Fixed Position */}
+        <div className="fixed top-4 right-4 z-50">
+          {isImageDropMinimized ? (
+            /* Collapsed - Circular Icon */
+            <button
+              onClick={() => setIsImageDropMinimized(false)}
+              className="w-16 h-16 bg-white/10 backdrop-blur-xl border border-white/20 rounded-full text-white shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 hover:bg-white/20 group"
+              title="Open Image Upload"
+            >
+              <svg className="w-6 h-6 transition-transform duration-300 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            </button>
+          ) : (
+            /* Expanded - Full Drop Zone */
+            <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl text-white shadow-2xl w-64 transition-all duration-300">
+              <div className="flex items-center justify-between p-4 pb-2">
+                <h2 className="text-lg font-semibold break-words">Image Upload</h2>
+                <button
+                  onClick={() => setIsImageDropMinimized(true)}
+                  className="text-white/70 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-full"
+                  title="Collapse"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                  </svg>
+                </button>
+              </div>
+              <div className="px-6 pb-6">
+                <ImageDropZone onImageUpload={handleImageUpload} />
+              </div>
+            </div>
+          )}
+        </div>
 
-          {/* Debug indicators */}
+        {/* Debug indicators - Bottom right */}
+        <div className="fixed bottom-4 right-4 z-40">
           <div className="space-y-2">
             <div className="px-3 py-2 rounded-xl bg-black/40 text-xs">
               <div className="flex items-center justify-between">
