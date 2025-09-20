@@ -1,0 +1,1 @@
+export { BarGraphWindow } from './BarGraphWindow';
