@@ -38,19 +38,48 @@ export function DebugSidebar({
   const [taskQueue, setTaskQueue] = useState<Task[]>([]);
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
   const [recentToolCalls, setRecentToolCalls] = useState<any[]>([]);
+  const [inputBuffer, setInputBuffer] = useState<string>('');
+  const [aiActionLog, setAiActionLog] = useState<Array<any>>([]);
 
   useEffect(() => {
     const listeners = [
+      // Input
+      eventBus.on('input:voice_debug', (d: any) => {
+        if (d && typeof d.bufferText === 'string') {
+          setInputBuffer(d.bufferText);
+        }
+      }),
+      eventBus.on('input:tasks', (data: any) => {
+        try {
+          const items = Array.isArray(data?.tasks) ? data.tasks : [];
+          if (items.length === 0) return;
+          setAiActionLog(prev => {
+            const entries = items.map((t: any) => ({
+              kind: 'submitted',
+              id: t.id,
+              text: t.text,
+              source: t.source || 'unknown',
+              timestamp: t.timestamp || Date.now()
+            }));
+            return [...entries, ...prev].slice(0, 30);
+          });
+        } catch {}
+      }),
+
+      // AI tasks lifecycle
       eventBus.on('ai:task_queue_updated', (tasks: Task[]) => setTaskQueue(tasks)),
       eventBus.on('ai:task_started', ({ task }: { task: Task }) => {
         setCurrentTask(task);
         setTaskQueue(prev => prev.filter(t => t.id !== task.id));
+        setAiActionLog(prev => [{ kind: 'run', id: task.id, tool: task.tool, description: task.description, timestamp: Date.now(), status: 'started' }, ...prev].slice(0, 30));
       }),
-      eventBus.on('ai:task_completed', () => {
+      eventBus.on('ai:task_completed', ({ task, result }: any) => {
         setCurrentTask(null);
+        setAiActionLog(prev => prev.map(entry => entry.id === task?.id ? { ...entry, status: 'completed', result } : entry));
       }),
-      eventBus.on('ai:task_failed', () => {
+      eventBus.on('ai:task_failed', ({ task, error }: any) => {
         setCurrentTask(null);
+        setAiActionLog(prev => prev.map(entry => entry.id === task?.id ? { ...entry, status: 'failed', error } : entry));
       }),
       eventBus.on('ai:tool_call_started', (data: any) => {
         setRecentToolCalls(prev => [{ ...data, status: 'started', timestamp: Date.now() }, ...prev].slice(0, 5));
@@ -111,6 +140,13 @@ export function DebugSidebar({
             <div className="flex justify-between"><span>API Calls/min:</span> <span>{apiBudget.used}</span></div>
             {apiBudget.nextMs != null && <div className="flex justify-between"><span>Next Call In:</span> <span>{Math.max(0, Math.round(apiBudget.nextMs/1000))}s</span></div>}
           </div>
+
+          <div className="mt-4">
+            <h3 className="font-bold">Text Buffer</h3>
+            <div className="mt-1 text-xs bg-gray-700/50 p-2 rounded max-h-40 overflow-auto whitespace-pre-wrap break-words">
+              {inputBuffer ? inputBuffer : <span className="text-gray-400">Empty</span>}
+            </div>
+          </div>
         </div>
       )}
 
@@ -157,6 +193,34 @@ export function DebugSidebar({
                 </li>
               ))}
               {recentToolCalls.length === 0 && <li className="text-gray-400">None</li>}
+            </ul>
+          </div>
+
+          <div className="mt-4">
+            <h3 className="font-bold">Action Log</h3>
+            <ul className="mt-1 space-y-2 text-xs">
+              {aiActionLog.map((entry, i) => (
+                <li key={i} className="bg-gray-700/50 p-2 rounded">
+                  {entry.kind === 'submitted' ? (
+                    <div>
+                      <p><strong>Submitted</strong> <span className="text-gray-300">({entry.source})</span></p>
+                      <p className="truncate">{entry.text}</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <p><strong>Run</strong>: {entry.tool} <span className="text-gray-300">({entry.status})</span></p>
+                      <p className="truncate">{entry.description}</p>
+                      {entry.status === 'completed' && entry.result && (
+                        <p className="truncate"><strong>Result:</strong> {JSON.stringify(entry.result)}</p>
+                      )}
+                      {entry.status === 'failed' && entry.error && (
+                        <p className="truncate text-rose-300"><strong>Error:</strong> {String(entry.error)}</p>
+                      )}
+                    </div>
+                  )}
+                </li>
+              ))}
+              {aiActionLog.length === 0 && <li className="text-gray-400">No actions yet</li>}
             </ul>
           </div>
         </div>

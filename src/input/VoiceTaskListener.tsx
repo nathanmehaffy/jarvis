@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { eventBus } from '@/lib/eventBus';
 import { useSpeechTranscription } from './useSpeechTranscription';
+import { CerebrasClient } from '@/ai/cerebrasClient';
 
 type Status = 'idle' | 'listening' | 'processing' | 'error';
 
@@ -28,9 +29,20 @@ export function VoiceTaskListener() {
   const scheduledForRef = useRef<number | null>(null);
   const callStartBufferLengthRef = useRef(0);
   const lastBufferAppendAtRef = useRef<number>(0);
+  
+  const recentTaskTextsRef = useRef<Map<string, number>>(new Map());
+  const latestFullTextRef = useRef<string>('');
+  const streamTimerRef = useRef<number | null>(null);
+  const lastStreamCallAtRef = useRef<number>(0);
+  const lastStreamProcessedTextRef = useRef<string>('');
 
-  const MIN_SPACING_MS = 2000; // ~30 calls/min evenly spaced
-  const MIN_DEBOUNCE_MS = 300; // slight coalescing of bursts
+  const cerebrasClient = useMemo(() => new CerebrasClient(), []);
+
+  const MIN_DEBOUNCE_MS = 0; // retained for potential future use
+  const STREAM_INTERVAL_MS = 2000; // periodic calls during continuous speech
+  const STILL_SPEAKING_WINDOW_MS = 1500; // treat activity within this as still speaking
+  const SILENCE_CONFIRM_MS = 1000; // wait after last final segment to coalesce phrases
+  const ENABLE_STREAMING = false; // disable streaming task emission to avoid partial-command actions
 
   const cleanOld = useCallback((timestamps: number[]): number[] => {
     const cutoff = Date.now() - 60000;
@@ -44,10 +56,22 @@ export function VoiceTaskListener() {
     autoStart: true,
     continuous: true,
     onTranscript: (data) => {
+      if (data?.fullText) {
+        latestFullTextRef.current = data.fullText.trim();
+      }
       if (data.final && data.final.trim()) {
-        setBuffer(prev => (prev ? prev + ' ' : '') + data.final.trim());
+        // Compute and set new buffer synchronously to ensure attemptProcessing sees it
+        const newBuffer = (bufferRef.current ? bufferRef.current + ' ' : '') + data.final.trim();
+        bufferRef.current = newBuffer;
+        setBuffer(newBuffer);
         lastBufferAppendAtRef.current = Date.now();
-        scheduleProcessing();
+        // Coalesce multiple final segments by waiting briefly for silence
+        scheduleTimer(SILENCE_CONFIRM_MS);
+      } else if (data.interim && data.interim.trim()) {
+        // Update activity timestamp to indicate user is still speaking
+        lastBufferAppendAtRef.current = Date.now();
+        // Periodic streaming calls while speaking
+        if (ENABLE_STREAMING) scheduleStreamProcessing();
       }
     },
     onError: (error) => {
@@ -65,6 +89,7 @@ export function VoiceTaskListener() {
     eventBus.emit('input:voice_debug', {
       status: !isSupported ? 'error' : processingRef.current ? 'processing' : isListening ? 'listening' : 'idle',
       bufferLength: bufferRef.current.length,
+      bufferText: bufferRef.current,
       apiCallsUsedLastMinute: recent.length,
       nextCallInMs: nextCallAt ? Math.max(0, nextCallAt - Date.now()) : null,
       lastError: lastError || null,
@@ -93,6 +118,28 @@ export function VoiceTaskListener() {
     };
   }, []);
 
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (scheduledTimeoutRef.current !== null) {
+        clearTimeout(scheduledTimeoutRef.current);
+        scheduledTimeoutRef.current = null;
+      }
+      if (streamTimerRef.current !== null) {
+        clearTimeout(streamTimerRef.current);
+        streamTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Stop streaming when recognition stops
+  useEffect(() => {
+    if (!isListening && streamTimerRef.current !== null) {
+      clearTimeout(streamTimerRef.current);
+      streamTimerRef.current = null;
+    }
+  }, [isListening]);
+
   // Track listening status for status display
   useEffect(() => {
     if (!isSupported) {
@@ -116,56 +163,83 @@ export function VoiceTaskListener() {
       scheduledTimeoutRef.current = null;
       scheduledForRef.current = null;
       setNextCallAt(null);
-      attemptProcessing();
+      attemptProcessing('final');
     }, delayMs);
   }, []);
 
   const scheduleProcessing = useCallback(() => {
     if (!isSupported || !isOnline) return;
-    if (!bufferRef.current || processingRef.current) {
-      // If processing, it will reschedule on completion if needed
-      return;
-    }
+    if (processingRef.current) return;
+    if (!bufferRef.current) return;
 
     const now = Date.now();
     const recent = cleanOld(apiCallTimestampsRef.current);
     const capWait = recent.length >= 30 ? (60000 - (now - recent[0])) : 0;
-    const spacingWait = recent.length > 0 ? Math.max(0, (recent[recent.length - 1] + MIN_SPACING_MS) - now) : 0;
-    let waitMs = Math.max(capWait, spacingWait, MIN_DEBOUNCE_MS);
-
-    // If a timer exists but our new calculation is earlier, reschedule
-    const desiredRunAt = now + waitMs;
-    if (scheduledForRef.current == null || desiredRunAt < scheduledForRef.current) {
-      scheduleTimer(waitMs);
+    if (capWait > 0) {
+      scheduleTimer(capWait);
+    } else {
+      attemptProcessing('final');
     }
-  }, [MIN_SPACING_MS, MIN_DEBOUNCE_MS, cleanOld, isOnline, isSupported, scheduleTimer]);
+  }, [MIN_DEBOUNCE_MS, cleanOld, isOnline, isSupported, scheduleTimer]);
 
-  const attemptProcessing = useCallback(() => {
+  const scheduleStreamProcessing = useCallback(() => {
     if (!isSupported || !isOnline) return;
-    if (!bufferRef.current) return;
     if (processingRef.current) return;
+
+    const now = Date.now();
+    // Only if we appear to still be speaking
+    if (now - (lastBufferAppendAtRef.current || now) > STILL_SPEAKING_WINDOW_MS) return;
+
+    const sinceLast = now - (lastStreamCallAtRef.current || 0);
+    const waitMs = Math.max(0, STREAM_INTERVAL_MS - sinceLast);
+
+    if (streamTimerRef.current !== null) {
+      clearTimeout(streamTimerRef.current);
+      streamTimerRef.current = null;
+    }
+    streamTimerRef.current = window.setTimeout(() => {
+      streamTimerRef.current = null;
+      if (ENABLE_STREAMING) attemptProcessing('stream');
+    }, waitMs);
+  }, []);
+
+  const attemptProcessing = useCallback((mode: 'final' | 'stream' = 'final') => {
+    if (!isSupported || !isOnline) return;
+    if (processingRef.current) return;
+
+    // Guard by mode
+    if (mode === 'final') {
+      if (!bufferRef.current) return;
+    } else if (mode === 'stream') {
+      const nowCheck = Date.now();
+      if (nowCheck - (lastBufferAppendAtRef.current || nowCheck) > STILL_SPEAKING_WINDOW_MS) return;
+      const hasText = (latestFullTextRef.current && latestFullTextRef.current.length > 0) || (bufferRef.current && bufferRef.current.length > 0);
+      if (!hasText) return;
+    }
 
     const now = Date.now();
     const recent = cleanOld(apiCallTimestampsRef.current);
 
     if (recent.length >= 30) {
       const wait = 60000 - (now - recent[0]);
-      if (wait > 0) scheduleTimer(wait);
+      if (wait > 0) {
+        if (mode === 'final') {
+          scheduleTimer(wait);
+        } else {
+          // stream mode: reschedule another attempt after cap clears
+          if (streamTimerRef.current !== null) clearTimeout(streamTimerRef.current);
+          streamTimerRef.current = window.setTimeout(() => attemptProcessing('stream'), wait);
+        }
+      }
       return;
     }
 
-    const spacingWait = recent.length > 0 ? Math.max(0, (recent[recent.length - 1] + MIN_SPACING_MS) - now) : 0;
-    if (spacingWait > 0) {
-      scheduleTimer(spacingWait);
-      return;
-    }
+    processNow(mode);
+  }, [cleanOld, isOnline, isSupported, scheduleTimer]);
 
-    processNow();
-  }, [MIN_SPACING_MS, cleanOld, isOnline, isSupported, scheduleTimer]);
-
-  const processNow = useCallback(() => {
+  const processNow = useCallback((mode: 'final' | 'stream' = 'final') => {
     const currentBuffer = bufferRef.current;
-    if (!currentBuffer) return;
+    if (mode === 'final' && !currentBuffer) return;
 
     processingRef.current = true;
     setStatus('processing');
@@ -178,52 +252,102 @@ export function VoiceTaskListener() {
     });
 
     // Remember how much of the buffer we're sending
-    callStartBufferLengthRef.current = currentBuffer.length;
+    callStartBufferLengthRef.current = currentBuffer ? currentBuffer.length : 0;
 
     const MAX_PROMPT_CHARS = 2000;
-    const baseText = currentBuffer.length > MAX_PROMPT_CHARS
-      ? currentBuffer.slice(-MAX_PROMPT_CHARS)
-      : currentBuffer;
+    const getCommonPrefixLength = (a: string, b: string): number => {
+      const minLen = Math.min(a.length, b.length);
+      let i = 0;
+      while (i < minLen && a.charCodeAt(i) === b.charCodeAt(i)) {
+        i++;
+      }
+      return i;
+    };
+    let rawBase = '';
+    if (mode === 'stream') {
+      const full = latestFullTextRef.current || currentBuffer || '';
+      // Use only the delta since the last stream call to avoid reprocessing old text
+      let delta = '';
+      const prev = lastStreamProcessedTextRef.current || '';
+      if (prev && full.startsWith(prev)) {
+        delta = full.slice(prev.length);
+      } else {
+        const common = getCommonPrefixLength(prev, full);
+        delta = full.slice(common);
+      }
+      // If delta is tiny, still provide a small tail for context
+      const tail = full.length > 400 ? full.slice(-400) : full;
+      rawBase = (delta && delta.trim().length > 0) ? delta : tail;
+    } else {
+      rawBase = currentBuffer.length > MAX_PROMPT_CHARS ? currentBuffer.slice(-MAX_PROMPT_CHARS) : currentBuffer;
+    }
 
-    const now = Date.now();
-    const lastAppend = lastBufferAppendAtRef.current || now;
-    const silenceMs = Math.max(0, now - lastAppend);
-    const textWithSilence = silenceMs > 500
-      ? `${baseText} [silence for ${(silenceMs / 1000).toFixed(1)} seconds]`
-      : baseText;
+    // No silence confirmation follow-up
+    if (mode === 'stream') {
+      lastStreamCallAtRef.current = Date.now();
+      // Advance processed pointer to current full text snapshot
+      lastStreamProcessedTextRef.current = latestFullTextRef.current || currentBuffer || '';
+    }
 
-    const prompt = `Reasoning: none. Respond immediately.\n` +
-      `Analyze the following transcribed speech and extract any specific, actionable tasks.\n` +
-      `Guidelines:\n- Be cautious not to extract tasks from incomplete fragments.\n- If a simple, complete command is followed by a silence indicator, assume it's complete and extract it.\n\n` +
-      `Return a JSON response with:\n` +
-      `1. "tasks": array of specific actionable tasks found\n` +
-      `2. "remainder": any text that might be part of an incomplete task\n\n` +
-      `Text: "${textWithSilence}"\n\n` +
-      `Respond ONLY with valid JSON.`;
-
-    fetch('/api/cerebras-tasks', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt })
-    })
-    .then(res => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    })
-    .then((data: unknown) => {
+    cerebrasClient.extractTasksFromTranscript(rawBase)
+    .then((data) => {
       // Hard validate: object with tasks (string[]) present and optional remainder (string)
       if (!data || typeof data !== 'object') {
         return; // discard
       }
-      const obj = data as CerebrasResult;
+      const obj = data;
       if (!('tasks' in obj) || !Array.isArray(obj.tasks) || !obj.tasks.every(t => typeof t === 'string')) {
         return; // discard
       }
 
-      const tasks = (obj.tasks || []).map(t => t.trim()).filter(t => t.length > 0);
-      const remainder = typeof obj.remainder === 'string' ? obj.remainder : '';
+      // Only emit tasks when processing finalized speech; suppress streaming-derived actions
+      let tasks: string[] = [];
+      if (mode === 'final') {
+        // Deduplicate tasks recently emitted to avoid double-actions across modes
+        const nowTsClean = Date.now();
+        // Clean old entries (> 60s)
+        const recentMap = recentTaskTextsRef.current;
+        for (const [k, v] of recentMap.entries()) {
+          if (nowTsClean - v > 60000) {
+            recentMap.delete(k);
+          }
+        }
 
-      if (tasks.length > 0) {
+        const normalize = (s: string) => s.trim().toLowerCase();
+        const incoming = (obj.tasks || []).map(t => t.trim()).filter(t => t.length > 0);
+        tasks = incoming.filter(text => {
+          const key = normalize(text);
+          if (recentMap.has(key)) return false;
+          recentMap.set(key, nowTsClean);
+          return true;
+        });
+      }
+      // Sanitize remainder to avoid keeping random noise in the buffer
+      const sanitizeRemainder = (text: string): string => {
+        const t = (text || '').trim().replace(/\s+/g, ' ');
+        if (!t) return '';
+        if (t.length <= 2) return '';
+        const lower = t.toLowerCase();
+        // Drop if mostly filler or conversational
+        const fillerTokens = [
+          'uh','um','erm','hmm','like','you know','i mean','ok','okay','yeah','right','so','anyway','basically','kinda','sort of','sorta','yep','nope'
+        ];
+        const tokens = lower.split(/\s+/);
+        const fillerCount = tokens.filter(tok => fillerTokens.includes(tok)).length;
+        if (tokens.length > 0 && (fillerCount / tokens.length) > 0.5) return '';
+        // Drop if too many non-word symbols
+        const nonWordRatio = ((t.match(/[^a-zA-Z0-9\s.,;:!?'"()\-]/g) || []).length) / t.length;
+        if (nonWordRatio > 0.2) return '';
+        // Drop if short and lacks a verb-like indicator
+        if (tokens.length <= 3 && !/(open|close|create|add|remove|delete|show|hide|start|stop|play|pause|scroll|switch|go|search|find|set|update|rename|move|zoom|pin|unpin|note|write|save)/i.test(t)) {
+          return '';
+        }
+        return t;
+      };
+      const remainderRaw = typeof obj.remainder === 'string' ? obj.remainder : '';
+      const remainder = sanitizeRemainder(remainderRaw);
+
+      if (mode === 'final' && tasks.length > 0) {
         const nowTs = Date.now();
         eventBus.emit('input:tasks', {
           tasks: tasks.map((text, index) => ({
@@ -235,24 +359,31 @@ export function VoiceTaskListener() {
         });
       }
 
-      // Update buffer: replace the part we sent with remainder, keep any new text that arrived after call started
-      const suffix = bufferRef.current.slice(callStartBufferLengthRef.current);
-      const newBuffer = [remainder || '', suffix || ''].filter(Boolean).join(' ').trim();
-      setBuffer(newBuffer);
+      // Update buffer only for final; keep buffer intact for streaming
+      if (mode === 'final') {
+        const suffix = bufferRef.current.slice(callStartBufferLengthRef.current);
+        const newBuffer = [remainder || '', suffix || ''].filter(Boolean).join(' ').trim();
+        bufferRef.current = newBuffer;
+        setBuffer(newBuffer);
+        // Align stream pointer with latest full text after buffer update
+        lastStreamProcessedTextRef.current = latestFullTextRef.current || bufferRef.current || '';
+      }
     })
     .catch((error) => {
       // Retry after 5 seconds; keep buffer untouched
       setStatus('error');
       setLastError('Cerebras API error - retrying...');
       window.setTimeout(() => {
-        if (bufferRef.current) scheduleProcessing();
+        if (mode === 'final') {
+          if (bufferRef.current) scheduleProcessing();
+        }
       }, 5000);
     })
     .finally(() => {
       processingRef.current = false;
       setStatus(isListening ? 'listening' : 'idle');
-      // If more buffer exists, try to schedule next call
-      if (bufferRef.current) scheduleProcessing();
+      
+      // For final mode, do not auto-loop; subsequent calls are triggered by new speech or silence confirm
     });
   }, [isListening, cleanOld, scheduleProcessing]);
 
