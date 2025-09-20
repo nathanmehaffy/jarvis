@@ -17,8 +17,8 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         model: 'gpt-oss-120b',
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-        response_format: { type: 'json_object' }
+        temperature: 0.5,
+        max_tokens: 1024
       })
     });
 
@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
     return new Response(JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) }), { status: 500 });
   }
 }
+
 
 
 

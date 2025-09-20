@@ -27,6 +27,7 @@ export function VoiceTaskListener() {
   const scheduledTimeoutRef = useRef<number | null>(null);
   const scheduledForRef = useRef<number | null>(null);
   const callStartBufferLengthRef = useRef(0);
+  const lastBufferAppendAtRef = useRef<number>(0);
 
   const MIN_SPACING_MS = 2000; // ~30 calls/min evenly spaced
   const MIN_DEBOUNCE_MS = 300; // slight coalescing of bursts
@@ -45,6 +46,7 @@ export function VoiceTaskListener() {
     onTranscript: (data) => {
       if (data.final && data.final.trim()) {
         setBuffer(prev => (prev ? prev + ' ' : '') + data.final.trim());
+        lastBufferAppendAtRef.current = Date.now();
         scheduleProcessing();
       }
     },
@@ -178,11 +180,25 @@ export function VoiceTaskListener() {
     // Remember how much of the buffer we're sending
     callStartBufferLengthRef.current = currentBuffer.length;
 
-    const prompt = `Analyze the following transcribed speech and extract any specific, actionable tasks.\n` +
+    const MAX_PROMPT_CHARS = 2000;
+    const baseText = currentBuffer.length > MAX_PROMPT_CHARS
+      ? currentBuffer.slice(-MAX_PROMPT_CHARS)
+      : currentBuffer;
+
+    const now = Date.now();
+    const lastAppend = lastBufferAppendAtRef.current || now;
+    const silenceMs = Math.max(0, now - lastAppend);
+    const textWithSilence = silenceMs > 500
+      ? `${baseText} [silence for ${(silenceMs / 1000).toFixed(1)} seconds]`
+      : baseText;
+
+    const prompt = `Reasoning: none. Respond immediately.\n` +
+      `Analyze the following transcribed speech and extract any specific, actionable tasks.\n` +
+      `Guidelines:\n- Be cautious not to extract tasks from incomplete fragments.\n- If a simple, complete command is followed by a silence indicator, assume it's complete and extract it.\n\n` +
       `Return a JSON response with:\n` +
       `1. "tasks": array of specific actionable tasks found\n` +
       `2. "remainder": any text that might be part of an incomplete task\n\n` +
-      `Text: "${currentBuffer}"\n\n` +
+      `Text: "${textWithSilence}"\n\n` +
       `Respond ONLY with valid JSON.`;
 
     fetch('/api/cerebras-tasks', {
@@ -210,10 +226,10 @@ export function VoiceTaskListener() {
       if (tasks.length > 0) {
         const nowTs = Date.now();
         eventBus.emit('input:tasks', {
-          tasks: tasks.map(text => ({
+          tasks: tasks.map((text, index) => ({
             id: (globalThis.crypto && 'randomUUID' in globalThis.crypto) ? crypto.randomUUID() : Math.random().toString(36).slice(2),
             text,
-            timestamp: nowTs,
+            timestamp: nowTs + index,
             source: 'voice'
           }))
         });
