@@ -92,6 +92,10 @@ Few-shot guidance (intent → tool call shape):
 - User: "open a quiz titled \"Chapter 3 Review\"" → open_window { windowType: "quiz", context: { title: "Chapter 3 Review", type: "quiz" } }
 - User: "give me a hint about \"Pythagorean theorem\"" → open_window { windowType: "hint", context: { title: "Pythagorean theorem", content: "a^2 + b^2 = c^2", type: "hint" } }
 - User: "explain \"binary search\" step by step" → open_window { windowType: "explainer", context: { title: "Binary search", type: "explainer" } }
+- User: "open 5 windows saying hello" → [create 5 separate open_window calls with same content "hello"]
+- User: "close all windows" → close_window { selector: "all" }
+
+IMPORTANT: When user asks to open multiple windows (e.g., "open 5 windows"), create multiple separate tool calls, one for each window.
 
 Always respond using the available tools. If the request is unclear, make reasonable assumptions.`;
 
