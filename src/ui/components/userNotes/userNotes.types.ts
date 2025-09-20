@@ -1,8 +1,8 @@
-export interface NotesState {
+export interface UserNotesState {
   content: string;
   lastModified: Date;
 }
 
-export interface TextOutputProps {
+export interface UserNotesProps {
   placeholder?: string;
 }

@@ -7,7 +7,8 @@ import { aiManager } from '@/ai';
 import { WindowManager, WindowManagerRef } from './components/windowManager';
 import { InputWindow } from './components/inputWindow';
 import { AIWindow } from './components/aiWindow';
-import { TextOutput } from './components/textOutput';
+import { UserNotes } from './components/userNotes';
+import { SystemOutput } from './components/systemOutput';
 import { AnimatedBackground } from './components/background';
 
 export function MainUI() {
@@ -61,13 +62,25 @@ export function MainUI() {
     });
   };
 
-  const openTextOutputWindow = () => {
+  const openUserNotesWindow = () => {
     windowManagerRef.current?.openWindow({
-      id: 'text-output-window',
-      title: 'Text Output',
-      component: TextOutput,
+      id: 'user-notes-window',
+      title: 'Personal Notes',
+      component: UserNotes,
       x: 300,
       y: 200,
+      width: 500,
+      height: 400
+    });
+  };
+
+  const openSystemOutputWindow = () => {
+    windowManagerRef.current?.openWindow({
+      id: 'system-output-window',
+      title: 'System Output',
+      component: SystemOutput,
+      x: 350,
+      y: 250,
       width: 600,
       height: 450
     });
@@ -108,12 +121,21 @@ export function MainUI() {
                 </div>
               </button>
               <button
-                onClick={openTextOutputWindow}
-                className="group block w-full px-6 py-4 bg-gradient-to-r from-slate-500/60 to-gray-600/60 hover:from-slate-500/80 hover:to-gray-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
+                onClick={openUserNotesWindow}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-blue-500/60 to-indigo-600/60 hover:from-blue-500/80 hover:to-indigo-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
               >
                 <div className="flex items-center">
-                  <div className="w-3 h-3 bg-slate-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                  <span className="font-semibold">Open Text Output</span>
+                  <div className="w-3 h-3 bg-blue-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Personal Notes</span>
+                </div>
+              </button>
+              <button
+                onClick={openSystemOutputWindow}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-green-500/60 to-emerald-600/60 hover:from-green-500/80 hover:to-emerald-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-green-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open System Output</span>
                 </div>
               </button>
             </div>

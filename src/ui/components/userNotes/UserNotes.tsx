@@ -1,51 +1,16 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { eventBus } from '@/lib/eventBus';
-import { NotesState, TextOutputProps } from './textOutput.types';
+import { useState, useRef } from 'react';
+import { UserNotesState, UserNotesProps } from './userNotes.types';
 
-export function TextOutput({
-  placeholder = 'Start typing your notes here...'
-}: TextOutputProps) {
-  const [notes, setNotes] = useState<NotesState>({
+export function UserNotes({
+  placeholder = 'Start typing your personal notes here...'
+}: UserNotesProps) {
+  const [notes, setNotes] = useState<UserNotesState>({
     content: '',
     lastModified: new Date()
   });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    const unsubscribers = [
-      eventBus.on('input:input_processed', (data) => {
-        addToNotes(`📝 Input processed: ${JSON.stringify(data)}\n`);
-      }),
-      eventBus.on('ai:ai_response_generated', (data) => {
-        addToNotes(`🤖 AI response: ${JSON.stringify(data)}\n`);
-      }),
-      eventBus.on('input:initialized', () => {
-        addToNotes('✅ Input manager initialized\n');
-      }),
-      eventBus.on('ai:initialized', () => {
-        addToNotes('✅ AI manager initialized\n');
-      }),
-      eventBus.on('ui:log', (data: { message: string }) => {
-        addToNotes(`📋 ${data.message}\n`);
-      }),
-      eventBus.on('notes:add', (data: { text: string }) => {
-        addToNotes(data.text);
-      })
-    ];
-
-    return () => {
-      unsubscribers.forEach(unsub => unsub());
-    };
-  }, []);
-
-  const addToNotes = (text: string) => {
-    setNotes(prev => ({
-      content: prev.content + text,
-      lastModified: new Date()
-    }));
-  };
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setNotes({
@@ -66,11 +31,11 @@ export function TextOutput({
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b bg-white">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-lg flex items-center justify-center shadow-md">
-            <span className="text-white text-lg">📝</span>
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-lg flex items-center justify-center shadow-md">
+            <span className="text-white text-lg">✏️</span>
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-800">Notes</h3>
+            <h3 className="text-lg font-semibold text-gray-800">Personal Notes</h3>
             <p className="text-xs text-gray-500">
               Last modified: {notes.lastModified.toLocaleTimeString()}
             </p>

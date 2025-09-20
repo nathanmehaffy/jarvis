@@ -1,2 +1,2 @@
 export { TextOutput } from './TextOutput';
-export type { LogEntry, TextOutputProps } from './textOutput.types';
+export type { NotesState, TextOutputProps } from './textOutput.types';

@@ -156,22 +156,6 @@ export function Window({
           <button
             className={`w-3 h-3 rounded-full shadow-sm ${
               isDragging || isResizing
-                ? 'bg-yellow-400'
-                : 'bg-gradient-to-br from-yellow-400 to-orange-500 hover:scale-110 transition-transform duration-200'
-            }`}
-            aria-label="Minimize"
-          ></button>
-          <button
-            className={`w-3 h-3 rounded-full shadow-sm ${
-              isDragging || isResizing
-                ? 'bg-green-400'
-                : 'bg-gradient-to-br from-green-400 to-emerald-500 hover:scale-110 transition-transform duration-200'
-            }`}
-            aria-label="Maximize"
-          ></button>
-          <button
-            className={`w-3 h-3 rounded-full shadow-sm ${
-              isDragging || isResizing
                 ? 'bg-red-400'
                 : 'bg-gradient-to-br from-red-400 to-red-600 hover:scale-110 transition-transform duration-200'
             }`}

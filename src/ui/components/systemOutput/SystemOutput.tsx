@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { eventBus } from '@/lib/eventBus';
-import { NotesState, TextOutputProps } from './textOutput.types';
+import { SystemOutputState, SystemOutputProps } from './systemOutput.types';
 
-export function TextOutput({
-  placeholder = 'Start typing your notes here...'
-}: TextOutputProps) {
-  const [notes, setNotes] = useState<NotesState>({
+export function SystemOutput({
+  placeholder = 'System messages will appear here...'
+}: SystemOutputProps) {
+  const [notes, setNotes] = useState<SystemOutputState>({
     content: '',
     lastModified: new Date()
   });
@@ -16,21 +16,21 @@ export function TextOutput({
   useEffect(() => {
     const unsubscribers = [
       eventBus.on('input:input_processed', (data) => {
-        addToNotes(`📝 Input processed: ${JSON.stringify(data)}\n`);
+        addToNotes(`Input processed: ${JSON.stringify(data)}\n`);
       }),
       eventBus.on('ai:ai_response_generated', (data) => {
-        addToNotes(`🤖 AI response: ${JSON.stringify(data)}\n`);
+        addToNotes(`AI response: ${JSON.stringify(data)}\n`);
       }),
       eventBus.on('input:initialized', () => {
-        addToNotes('✅ Input manager initialized\n');
+        addToNotes('Input manager initialized successfully\n');
       }),
       eventBus.on('ai:initialized', () => {
-        addToNotes('✅ AI manager initialized\n');
+        addToNotes('AI manager initialized successfully\n');
       }),
       eventBus.on('ui:log', (data: { message: string }) => {
-        addToNotes(`📋 ${data.message}\n`);
+        addToNotes(`${data.message}\n`);
       }),
-      eventBus.on('notes:add', (data: { text: string }) => {
+      eventBus.on('system:output', (data: { text: string }) => {
         addToNotes(data.text);
       })
     ];
@@ -47,13 +47,6 @@ export function TextOutput({
     }));
   };
 
-  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setNotes({
-      content: e.target.value,
-      lastModified: new Date()
-    });
-  };
-
   const clearNotes = () => {
     setNotes({
       content: '',
@@ -66,23 +59,16 @@ export function TextOutput({
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b bg-white">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-lg flex items-center justify-center shadow-md">
-            <span className="text-white text-lg">📝</span>
+          <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-emerald-500 rounded-lg flex items-center justify-center shadow-md">
+            <span className="text-white text-lg">🖥️</span>
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-800">Notes</h3>
+            <h3 className="text-lg font-semibold text-gray-800">System Output</h3>
             <p className="text-xs text-gray-500">
               Last modified: {notes.lastModified.toLocaleTimeString()}
             </p>
           </div>
         </div>
-
-        <button
-          onClick={clearNotes}
-          className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors"
-        >
-          Clear All
-        </button>
       </div>
 
       {/* Notes Area */}
@@ -90,9 +76,9 @@ export function TextOutput({
         <textarea
           ref={textareaRef}
           value={notes.content}
-          onChange={handleContentChange}
+          readOnly
           placeholder={placeholder}
-          className="w-full h-full resize-none border-none outline-none bg-transparent text-gray-800 leading-relaxed text-sm"
+          className="w-full h-full resize-none border-none outline-none bg-transparent text-gray-800 leading-relaxed text-sm cursor-default"
           style={{
             fontFamily: 'system-ui, -apple-system, sans-serif',
             lineHeight: '1.6'
