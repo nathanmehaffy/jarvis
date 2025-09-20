@@ -9,6 +9,9 @@ import { InputWindow } from './components/inputWindow';
 import { AIWindow } from './components/aiWindow';
 import { UserNotes } from './components/userNotes';
 import { SystemOutput } from './components/systemOutput';
+import { GraphWindow } from './components/graphWindow';
+import { BarGraphWindow } from './components/barGraphWindow';
+import { PieChartWindow } from './components/pieChart';
 import { AnimatedBackground } from './components/background';
 
 export function MainUI() {
@@ -86,6 +89,42 @@ export function MainUI() {
     });
   };
 
+  const openGraphWindow = () => {
+    windowManagerRef.current?.openWindow({
+      id: 'graph-window',
+      title: 'Line Graph',
+      component: GraphWindow,
+      x: 400,
+      y: 100,
+      width: 750,
+      height: 550
+    });
+  };
+
+  const openBarGraphWindow = () => {
+    windowManagerRef.current?.openWindow({
+      id: 'bar-graph-window',
+      title: 'Bar Graph',
+      component: BarGraphWindow,
+      x: 450,
+      y: 150,
+      width: 750,
+      height: 550
+    });
+  };
+
+  const openPieChartWindow = () => {
+    windowManagerRef.current?.openWindow({
+      id: 'pie-chart-window',
+      title: 'Pie Chart',
+      component: PieChartWindow,
+      x: 500,
+      y: 200,
+      width: 800,
+      height: 600
+    });
+  };
+
   return (
     <div className="min-h-screen">
       <WindowManager ref={windowManagerRef}>
@@ -136,6 +175,33 @@ export function MainUI() {
                 <div className="flex items-center">
                   <div className="w-3 h-3 bg-green-400 rounded-full mr-3 group-hover:animate-pulse"></div>
                   <span className="font-semibold">Open System Output</span>
+                </div>
+              </button>
+              <button
+                onClick={openGraphWindow}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-purple-500/60 to-pink-600/60 hover:from-purple-500/80 hover:to-pink-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-purple-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Line Graph</span>
+                </div>
+              </button>
+              <button
+                onClick={openBarGraphWindow}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-orange-500/60 to-red-600/60 hover:from-orange-500/80 hover:to-red-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-orange-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Bar Graph</span>
+                </div>
+              </button>
+              <button
+                onClick={openPieChartWindow}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-pink-500/60 to-purple-600/60 hover:from-pink-500/80 hover:to-purple-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-pink-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Pie Chart</span>
                 </div>
               </button>
             </div>
