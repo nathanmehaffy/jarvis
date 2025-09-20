@@ -24,6 +24,7 @@ export function MainUI() {
   const [aiStatus, setAiStatus] = useState<'idle' | 'processing' | 'ready' | 'error'>('idle');
   const [apiBudget, setApiBudget] = useState<{ used: number; nextMs: number | null }>({ used: 0, nextMs: null });
   const [isImageDropMinimized, setIsImageDropMinimized] = useState(false);
+  const [isDesktopMinimized, setIsDesktopMinimized] = useState(false);
   useEffect(() => {
     aiManager.initialize();
     inputManager.initialize();
@@ -93,37 +94,86 @@ export function MainUI() {
     });
   };
 
+  const findOptimalWindowPosition = (windowWidth: number, windowHeight: number) => {
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+    const padding = 20;
+    const minGap = 10;
+    
+    // Get existing windows from the window manager
+    const existingWindows = windowManagerRef.current?.getWindows?.() || [];
+    
+    // Check if a position is available (no overlap with existing windows)
+    const isPositionAvailable = (x: number, y: number) => {
+      // Check if window would go off screen
+      if (x + windowWidth > screenWidth - padding || y + windowHeight > screenHeight - padding) {
+        return false;
+      }
+      
+      // Check for overlaps with existing windows
+      return !existingWindows.some(window => {
+        const windowX = window.x || 0;
+        const windowY = window.y || 0;
+        const windowW = window.width || 0;
+        const windowH = window.height || 0;
+        
+        return !(x >= windowX + windowW + minGap || 
+                x + windowWidth <= windowX - minGap || 
+                y >= windowY + windowH + minGap || 
+                y + windowHeight <= windowY - minGap);
+      });
+    };
+    
+    // Try to find space by scanning from top-left to bottom-right
+    // Priority: as far left as possible, as far up as possible
+    for (let y = padding; y + windowHeight <= screenHeight - padding; y += 10) {
+      for (let x = padding; x + windowWidth <= screenWidth - padding; x += 10) {
+        if (isPositionAvailable(x, y)) {
+          return { x, y };
+        }
+      }
+    }
+    
+    // Fallback to center if no space found
+    return {
+      x: Math.max(padding, (screenWidth - windowWidth) / 2),
+      y: Math.max(padding, (screenHeight - windowHeight) / 2)
+    };
+  };
+
   const openImageViewerWindow = (imageUrl: string, imageName: string) => {
     const windowId = `image-viewer-${Date.now()}`;
     
     // Calculate window dimensions based on image proportions
     const img = new Image();
     img.onload = () => {
-      // Get screen dimensions and set maximum to half the screen size
+      // Get screen dimensions and set maximum to 2/5 of screen size
       const screenWidth = window.innerWidth;
       const screenHeight = window.innerHeight;
-      const maxWidth = Math.min(800, screenWidth / 2);
-      const maxHeight = Math.min(600, screenHeight / 2);
+      const maxWidth = (screenWidth * 2) / 5;
+      const maxHeight = (screenHeight * 2) / 5;
       
       const aspectRatio = img.width / img.height;
       
       let width, height;
+      
+      // Calculate the maximum size that fits within screen limits while maintaining aspect ratio
       if (aspectRatio > 1) {
-        // Landscape image
-        width = Math.min(maxWidth, img.width);
+        // Landscape image - width is the limiting factor
+        width = maxWidth;
         height = width / aspectRatio;
         
-        // If height exceeds max, scale down
+        // If height exceeds max, scale down based on height
         if (height > maxHeight) {
           height = maxHeight;
           width = height * aspectRatio;
         }
       } else {
-        // Portrait or square image
-        height = Math.min(maxHeight, img.height);
+        // Portrait or square image - height is the limiting factor
+        height = maxHeight;
         width = height * aspectRatio;
         
-        // If width exceeds max, scale down
+        // If width exceeds max, scale down based on width
         if (width > maxWidth) {
           width = maxWidth;
           height = width / aspectRatio;
@@ -134,12 +184,15 @@ export function MainUI() {
       width = Math.max(width, 300);
       height = Math.max(height, 200);
       
+      // Find optimal position using smart placement
+      const position = findOptimalWindowPosition(Math.round(width), Math.round(height));
+      
       windowManagerRef.current?.openWindow({
         id: windowId,
         title: `Image: ${imageName}`,
         component: () => <ImageViewer imageUrl={imageUrl} imageName={imageName} windowId={windowId} />,
-        x: 400,
-        y: 300,
+        x: position.x,
+        y: position.y,
         width: Math.round(width),
         height: Math.round(height),
         imageUrl: imageUrl
@@ -150,6 +203,16 @@ export function MainUI() {
 
   const handleImageUpload = (imageUrl: string, imageName: string) => {
     openImageViewerWindow(imageUrl, imageName);
+  };
+
+  const handleMultipleImageUpload = (images: { url: string; name: string }[]) => {
+    // Open each image in a separate window with smart positioning
+    images.forEach((image, index) => {
+      // Add a small delay between opening windows to ensure proper positioning
+      setTimeout(() => {
+        openImageViewerWindow(image.url, image.name);
+      }, index * 100);
+    });
   };
 
   const openGraphWindow = () => {
@@ -229,9 +292,12 @@ export function MainUI() {
                   </svg>
                 </button>
               </div>
-              <div className="px-6 pb-6">
-                <ImageDropZone onImageUpload={handleImageUpload} />
-              </div>
+                <div className="px-6 pb-6">
+                  <ImageDropZone 
+                    onImageUpload={handleImageUpload} 
+                    onMultipleImageUpload={handleMultipleImageUpload}
+                  />
+                </div>
             </div>
           )}
         </div>
@@ -257,15 +323,39 @@ export function MainUI() {
 
         {/* Desktop Content */}
         <div className="absolute top-6 left-6 z-10">
-          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 text-white shadow-2xl">
-            <div className="flex items-center mb-6">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-xl mr-3 flex items-center justify-center">
-                <div className="w-4 h-4 bg-white rounded-full opacity-80"></div>
+          {isDesktopMinimized ? (
+            /* Minimized - Circular Icon */
+            <button
+              onClick={() => setIsDesktopMinimized(false)}
+              className="w-16 h-16 bg-white/10 backdrop-blur-xl border border-white/20 rounded-full text-white shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 hover:bg-white/20 group"
+              title="Open Jarvis Desktop"
+            >
+              <div className="w-6 h-6 bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
+                <div className="w-3 h-3 bg-white rounded-full opacity-80"></div>
               </div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
-                Jarvis Desktop
-              </h1>
-            </div>
+            </button>
+          ) : (
+            /* Expanded - Full Desktop */
+            <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 text-white shadow-2xl transition-all duration-300">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center">
+                  <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-xl mr-3 flex items-center justify-center">
+                    <div className="w-4 h-4 bg-white rounded-full opacity-80"></div>
+                  </div>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
+                    Jarvis Desktop
+                  </h1>
+                </div>
+                <button
+                  onClick={() => setIsDesktopMinimized(true)}
+                  className="text-white/70 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-full"
+                  title="Minimize"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                  </svg>
+                </button>
+              </div>
             <div className="space-y-3">
               <button
                 onClick={openInputWindow}
@@ -340,7 +430,8 @@ export function MainUI() {
                 </div>
               </button>
             </div>
-          </div>
+            </div>
+          )}
         </div>
       </WindowManager>
     </div>

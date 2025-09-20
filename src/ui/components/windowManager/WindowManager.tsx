@@ -13,6 +13,7 @@ interface WindowManagerProps {
 export interface WindowManagerRef {
   openWindow: (windowData: Omit<WindowData, 'isOpen' | 'zIndex'>) => void;
   closeWindow: (windowId: string) => void;
+  getWindows: () => WindowData[];
 }
 
 export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(function WindowManager({ children }, ref) {
@@ -61,7 +62,8 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
 
   useImperativeHandle(ref, () => ({
     openWindow,
-    closeWindow
+    closeWindow,
+    getWindows: () => state.windows
   }));
 
   // Listen for AI/UI events to open/close windows
