@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useState, forwardRef, useImperativeHandle, useRef } from 'react';
 import { Window } from '../window';
 import { WindowData, WindowManagerState } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
@@ -191,18 +191,6 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         nextZIndex: prev.nextZIndex + 1
       };
 
-      const windowPositions = newState.windows.map(w =>
-        `${w.title} (${w.id}): x=${Math.round(w.x)}, y=${Math.round(w.y)}, w=${w.width}, h=${w.height}`
-      ).join('\n');
-
-      eventBus.emit('system:output', {
-        text: `Window opened: ${windowData.title}\nPosition: x=${Math.round(scatteredPosition.x)}, y=${Math.round(scatteredPosition.y)} (smart positioning + scatter)\nSize: ${windowData.width}x${windowData.height}\n\nAll windows:\n${windowPositions}\n\n`
-      });
-
-      try {
-        eventBus.emit('window:opened', { id: windowData.id, type: 'ui', title: windowData.title });
-      } catch {}
-
       return newState;
     });
   };
@@ -213,9 +201,6 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
       windows: prev.windows.filter(w => w.id !== windowId),
       activeWindowId: prev.activeWindowId === windowId ? null : prev.activeWindowId
     }));
-    try {
-      eventBus.emit('window:closed', { windowId });
-    } catch {}
   };
 
   const minimizeWindow = (windowId: string) => {
@@ -295,6 +280,47 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
       onWindowsChange(state.windows);
     }
   }, [state.windows, onWindowsChange]);
+
+  // Defer window open/close side-effects to after render commit
+  // to avoid cross-component state updates during render.
+  const prevWindowsRef = useRef<WindowData[] | null>(null);
+
+  useEffect(() => {
+    const prevWindows = prevWindowsRef.current || undefined;
+    const currWindows = state.windows;
+
+    const prevIds = new Set((prevWindows || []).map(w => w.id));
+    const currIds = new Set(currWindows.map(w => w.id));
+
+    // Newly opened windows
+    currWindows.forEach(w => {
+      if (!prevIds.has(w.id)) {
+        const windowPositions = currWindows.map(w2 =>
+          `${w2.title} (${w2.id}): x=${Math.round(w2.x)}, y=${Math.round(w2.y)}, w=${w2.width}, h=${w2.height}`
+        ).join('\n');
+
+        eventBus.emit('system:output', {
+          text: `Window opened: ${w.title}\nPosition: x=${Math.round(w.x)}, y=${Math.round(w.y)}\nSize: ${w.width}x${w.height}\n\nAll windows:\n${windowPositions}\n\n`
+        });
+        try {
+          eventBus.emit('window:opened', { id: w.id, type: 'ui', title: w.title });
+        } catch {}
+      }
+    });
+
+    // Closed windows
+    if (prevWindows) {
+      prevWindows.forEach(w => {
+        if (!currIds.has(w.id)) {
+          try {
+            eventBus.emit('window:closed', { windowId: w.id });
+          } catch {}
+        }
+      });
+    }
+
+    prevWindowsRef.current = currWindows;
+  }, [state.windows]);
 
   useEffect(() => {
     const unsubs = [

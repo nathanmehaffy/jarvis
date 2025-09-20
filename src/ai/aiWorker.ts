@@ -27,7 +27,7 @@ const state: ConversationState = {
 
 function updateTranscriptHistory(newTranscript: string) {
   const combined = newTranscript || '';
-  state.transcriptHistory = combined.length > 2000 ? combined.slice(-2000) : combined;
+  state.transcriptHistory = combined.length > 500 ? combined.slice(-500) : combined;
 }
 
 function appendActionRecord(record: ActionRecord) {

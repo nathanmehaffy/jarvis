@@ -248,7 +248,7 @@ export function VoiceTaskListener() {
     // Remember how much text we considered at this processing moment
     callStartBufferLengthRef.current = currentBuffer ? currentBuffer.length : 0;
 
-    const MAX_PROMPT_CHARS = 2000;
+    const MAX_PROMPT_CHARS = 500;
     const getCommonPrefixLength = (a: string, b: string): number => {
       const minLen = Math.min(a.length, b.length);
       let i = 0;
