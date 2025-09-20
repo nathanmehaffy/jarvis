@@ -10,6 +10,8 @@ import { AIWindow } from './components/aiWindow';
 import { UserNotes } from './components/userNotes';
 import { SystemOutput } from './components/systemOutput';
 import { AnimatedBackground } from './components/background';
+import { ImageDropZone } from './components/imageDropZone';
+import { ImageViewer } from './components/imageViewer';
 
 export function MainUI() {
   const windowManagerRef = useRef<WindowManagerRef>(null);
@@ -86,10 +88,36 @@ export function MainUI() {
     });
   };
 
+  const openImageViewerWindow = (imageUrl: string, imageName: string) => {
+    const windowId = `image-viewer-${Date.now()}`;
+    windowManagerRef.current?.openWindow({
+      id: windowId,
+      title: `Image: ${imageName}`,
+      component: () => <ImageViewer imageUrl={imageUrl} imageName={imageName} />,
+      x: 400,
+      y: 300,
+      width: 700,
+      height: 500
+    });
+  };
+
+  const handleImageUpload = (imageUrl: string, imageName: string) => {
+    openImageViewerWindow(imageUrl, imageName);
+  };
+
   return (
     <div className="min-h-screen">
       <WindowManager ref={windowManagerRef}>
         <AnimatedBackground />
+        
+        {/* Image Drop Zone - Left Side */}
+        <div className="absolute top-6 left-80 z-10">
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-6 text-white shadow-2xl mb-6">
+            <h2 className="text-lg font-semibold mb-4 text-center">Image Upload</h2>
+            <ImageDropZone onImageUpload={handleImageUpload} />
+          </div>
+        </div>
+
         {/* Desktop Content */}
         <div className="absolute top-6 left-6 z-10">
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 text-white shadow-2xl">
