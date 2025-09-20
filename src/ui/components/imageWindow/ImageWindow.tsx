@@ -82,8 +82,29 @@ export function ImageWindow({
 		const deltaX = e.clientX - resizeStartRef.current.x;
 		const deltaY = e.clientY - resizeStartRef.current.y;
 		
-		const newWidth = Math.max(200, resizeStartRef.current.width + deltaX);
-		const newHeight = Math.max(150, resizeStartRef.current.height + deltaY);
+		// Calculate the aspect ratio from the original size
+		const originalAspectRatio = resizeStartRef.current.width / resizeStartRef.current.height;
+		
+		// Calculate new dimensions based on the larger delta to maintain aspect ratio
+		const deltaWidth = resizeStartRef.current.width + deltaX;
+		const deltaHeight = resizeStartRef.current.height + deltaY;
+		
+		let newWidth, newHeight;
+		
+		// Determine which dimension to use as the primary (larger change)
+		if (Math.abs(deltaX) > Math.abs(deltaY)) {
+			// Width is the primary dimension
+			newWidth = Math.max(200, deltaWidth);
+			newHeight = newWidth / originalAspectRatio;
+		} else {
+			// Height is the primary dimension
+			newHeight = Math.max(150, deltaHeight);
+			newWidth = newHeight * originalAspectRatio;
+		}
+		
+		// Ensure minimum dimensions
+		newWidth = Math.max(200, newWidth);
+		newHeight = Math.max(150, newHeight);
 		
 		setSize({ width: newWidth, height: newHeight });
 	};
