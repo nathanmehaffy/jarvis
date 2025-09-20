@@ -10,10 +10,10 @@ export function LineGraph({
   title = 'Line Graph',
   xAxisLabel = 'X Axis',
   yAxisLabel = 'Y Axis',
-  lineColor = '#3b82f6',
-  pointColor = '#1d4ed8',
-  gridColor = '#e5e7eb',
-  backgroundColor = '#ffffff',
+  lineColor = '#8b5cf6',
+  pointColor = '#7c3aed',
+  gridColor = '#374151',
+  backgroundColor = 'transparent',
   showGrid = true,
   showPoints = true,
   lineThickness = 2,
@@ -116,7 +116,7 @@ export function LineGraph({
           x={x}
           y={chartHeight + 20}
           textAnchor="middle"
-          className="text-xs fill-gray-600"
+          className="text-xs fill-gray-300"
         >
           {value.toFixed(1)}
         </text>
@@ -140,7 +140,7 @@ export function LineGraph({
           x={-10}
           y={y + 4}
           textAnchor="end"
-          className="text-xs fill-gray-600"
+          className="text-xs fill-gray-300"
         >
           {value.toFixed(1)}
         </text>
@@ -160,13 +160,11 @@ export function LineGraph({
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center p-4">
-      <h3 className="text-xl font-semibold text-gray-800 mb-4">{title}</h3>
-
       <div className="relative">
         <svg
           width={width}
           height={height}
-          className="border border-gray-200 rounded-lg"
+          className="border border-gray-600/30 rounded-lg"
           style={{ backgroundColor }}
           onMouseMove={handleMouseMove}
           onMouseLeave={() => setHoveredPoint(null)}
@@ -196,7 +194,7 @@ export function LineGraph({
                 cy={scaleY(point.y)}
                 r={pointRadius}
                 fill={pointColor}
-                stroke="#ffffff"
+                stroke="#1f2937"
                 strokeWidth={2}
                 className="cursor-pointer hover:r-6 transition-all"
                 onMouseEnter={() => setHoveredPoint(point)}
@@ -214,7 +212,7 @@ export function LineGraph({
             x={width / 2}
             y={height - 20}
             textAnchor="middle"
-            className="text-sm font-medium fill-gray-700"
+            className="text-sm font-medium fill-cyan-200"
           >
             {xAxisLabel}
           </text>
@@ -224,7 +222,7 @@ export function LineGraph({
             y={height / 2}
             textAnchor="middle"
             transform={`rotate(-90, 20, ${height / 2})`}
-            className="text-sm font-medium fill-gray-700"
+            className="text-sm font-medium fill-cyan-200"
           >
             {yAxisLabel}
           </text>

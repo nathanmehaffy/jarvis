@@ -124,16 +124,18 @@ export function ImageWindow({
 	};
 
 	const getAnimationClasses = () => {
-		const baseClasses = 'absolute rounded-2xl shadow-2xl overflow-hidden border-2 backdrop-blur-sm bg-black/20 transition-colors duration-150';
-		const borderClasses = isActive ? 'border-blue-400/80 shadow-blue-400/20' : 'border-white/20';
+		const baseClasses = 'absolute bg-black/40 backdrop-blur-2xl rounded-2xl shadow-2xl border border-cyan-400/30 overflow-hidden hover:shadow-cyan-400/20 hover:shadow-2xl hover:bg-black/50 will-change-transform transition-all duration-300';
+		const activeClasses = isActive
+			? 'ring-2 ring-cyan-400/50 shadow-cyan-400/30 border-cyan-400/60 shadow-cyan-400/40'
+			: 'shadow-black/40';
 
 		switch (animationState) {
 			case 'opening':
-				return `${baseClasses} ${borderClasses} animate-window-open`;
+				return `${baseClasses} ${activeClasses} animate-window-open`;
 			case 'closing':
-				return `${baseClasses} ${borderClasses} animate-window-close`;
+				return `${baseClasses} ${activeClasses} animate-window-close`;
 			default:
-				return `${baseClasses} ${borderClasses}`;
+				return `${baseClasses} ${activeClasses}`;
 		}
 	};
 
@@ -143,26 +145,30 @@ export function ImageWindow({
 			data-window-id={id}
 			className={getAnimationClasses()}
 			style={{ 
-				left: position.x, 
-				top: position.y, 
+				'--window-x': `${position.x}px`,
+				'--window-y': `${position.y}px`,
+				transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
 				width: size.width, 
 				height: size.height
-			}}
+			} as React.CSSProperties}
 			onMouseDown={(e) => {
 				e.stopPropagation();
 				onFocus();
 			}}
 		>
-			{/* Minimal window controls in top-right corner */}
-			<div className="absolute top-3 right-3 flex space-x-2 z-30">
+			{/* Window controls in top-right corner */}
+			<div className="absolute top-3 right-3 flex space-x-1 z-30">
 				<button
 					onClick={onClose}
-					className="w-6 h-6 rounded-full bg-red-500/40 hover:bg-red-600/60 backdrop-blur-sm flex items-center justify-center transition-all duration-200 hover:scale-110"
+					className="w-3 h-3 rounded-full bg-gradient-to-br from-purple-400 to-violet-600 hover:from-purple-300 hover:to-violet-500 transition-all duration-200 flex-shrink-0 flex items-center justify-center shadow-sm hover:shadow-purple-400/60 hover:shadow-lg transform hover:scale-110 ring-0 hover:ring-1 hover:ring-purple-400/60 neon-glow-purple"
 					title="Close"
+					style={{
+						boxShadow: '0 0 8px rgba(168, 85, 247, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+					}}
 				>
-					<svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-					</svg>
+					<span className="text-[10px] text-white font-bold leading-none opacity-80 group-hover:opacity-100 transition-opacity duration-200 drop-shadow-sm">
+						×
+					</span>
 				</button>
 			</div>
 

@@ -93,8 +93,8 @@ export function MainUI() {
       isFullscreen: false,
       x: 0,
       y: 0,
-      width: 400,
-      height: 300
+      width: 500,
+      height: 400
     });
   };
 
@@ -107,22 +107,24 @@ export function MainUI() {
       isFullscreen: false,
       x: 0,
       y: 0,
-      width: 400,
-      height: 300
+      width: 500,
+      height: 400
     });
   };
 
   const openUserNotesWindow = () => {
+    const windowId = `user-notes-window-${Date.now()}`;
     windowManagerRef.current?.openWindow({
-      id: 'user-notes-window',
-      title: 'Personal Notes',
-      component: UserNotes,
+      id: windowId,
+      title: 'New Note',
+      component: () => <UserNotes windowId={windowId} />,
+      content: 'This is a new note',
       isMinimized: false,
       isFullscreen: false,
       x: 0,
       y: 0,
-      width: 500,
-      height: 400
+      width: 600,
+      height: 320
     });
   };
 
@@ -135,8 +137,8 @@ export function MainUI() {
       isFullscreen: false,
       x: 0,
       y: 0,
-      width: 600,
-      height: 450
+      width: 700,
+      height: 350
     });
   };
 
@@ -224,7 +226,8 @@ export function MainUI() {
         x: position.x,
         y: position.y,
         width: Math.round(width),
-        height: Math.round(height),
+        height: Math.round(
+          height),
         imageUrl: imageUrl,
         isMinimized: false,
         isFullscreen: false
@@ -254,8 +257,8 @@ export function MainUI() {
       isFullscreen: false,
       x: 0,
       y: 0,
-      width: 750,
-      height: 550
+      width: 850,
+      height: 650
     });
   };
 
@@ -268,8 +271,8 @@ export function MainUI() {
       isFullscreen: false,
       x: 0,
       y: 0,
-      width: 750,
-      height: 550
+      width: 850,
+      height: 650
     });
   };
 
@@ -282,8 +285,8 @@ export function MainUI() {
       isFullscreen: false,
       x: 0,
       y: 0,
-      width: 800,
-      height: 600
+      width: 900,
+      height: 700
     });
   };
 

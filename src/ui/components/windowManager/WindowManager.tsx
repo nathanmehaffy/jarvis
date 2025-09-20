@@ -1,10 +1,13 @@
 'use client';
 
-import { useEffect, useState, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useState, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { Window } from '../window';
 import { ImageWindow } from '../imageWindow';
-import { WindowData, WindowManagerState } from './windowManager.types';
+// import { ConnectionRenderer } from '../connectionRenderer';
+// import { ConnectionControls } from '../connectionControls';
+import { WindowData, WindowManagerState, Connection } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
+// import { contentSimilarityAnalyzer } from '@/lib/contentSimilarity';
 
 interface WindowManagerProps {
   children: React.ReactNode;
@@ -18,14 +21,27 @@ export interface WindowManagerRef {
   restoreWindow: (windowId: string) => void;
   toggleFullscreen: (windowId: string) => void;
   getWindows: () => WindowData[];
+  toggleConnections: () => void;
+  setSimilarityThreshold: (threshold: number) => void;
 }
 
 export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(function WindowManager({ children, onWindowsChange }, ref) {
   const [state, setState] = useState<WindowManagerState>({
     windows: [],
     activeWindowId: null,
-    nextZIndex: 10
+    nextZIndex: 10,
+    connections: [],
+    deletedConnections: new Set<string>(),
+    showConnections: true,
+    similarityThreshold: 0.1
   });
+
+  // Helper function to create a unique connection ID
+  const getConnectionId = (windowId1: string, windowId2: string): string => {
+    // Always use consistent ordering to ensure same ID for bidirectional connections
+    const [id1, id2] = [windowId1, windowId2].sort();
+    return `${id1}--${id2}`;
+  };
 
   const getOptimalPosition = (width: number, height: number, currentWindows: WindowData[]): { x: number; y: number } => {
     const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
@@ -149,6 +165,79 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
     return bestPosition;
   };
 
+  // const analyzeWindowSimilarities = useCallback((windows: WindowData[], currentState: WindowManagerState) => {
+  //   console.log('🔍 Starting similarity analysis...');
+  //   eventBus.emit('system:output', { text: '🔍 Starting similarity analysis...\n' });
+
+  //   const windowContents = windows
+  //     .filter(w => w.isOpen && !w.isMinimized)
+  //     .map(w => contentSimilarityAnalyzer.processWindowContent(
+  //       w.id,
+  //       w.title,
+  //       w.content || ''
+  //     ));
+
+  //   const windowsInfo = windowContents.map(w => ({
+  //     id: w.id,
+  //     title: w.title,
+  //     content: w.content.slice(0, 50) + '...',
+  //     keywords: w.keywords,
+  //     wordCount: w.wordCount
+  //   }));
+
+  //   console.log('📊 Window contents processed:', windowsInfo);
+  //   eventBus.emit('system:output', {
+  //     text: `📊 Window contents processed:\n${JSON.stringify(windowsInfo, null, 2)}\n\n`
+  //   });
+
+  //   const similarities = contentSimilarityAnalyzer.analyzeSimilarities(windowContents);
+  //   console.log('🔗 Found similarities:', similarities);
+  //   eventBus.emit('system:output', {
+  //     text: `🔗 Found similarities:\n${JSON.stringify(similarities, null, 2)}\n\n`
+  //   });
+
+  //   const connections: Connection[] = similarities
+  //     .map(sim => ({
+  //       windowId1: sim.windowId1,
+  //       windowId2: sim.windowId2,
+  //       score: sim.score,
+  //       keywords: sim.keywords
+  //     }))
+  //     .filter(conn => {
+  //       const connectionId = getConnectionId(conn.windowId1, conn.windowId2);
+  //       // Filter out deleted connections - keep them in state but set score to 0
+  //       if (currentState.deletedConnections.has(connectionId)) {
+  //         return false; // Don't include deleted connections in the active list
+  //       }
+  //       return true;
+  //     });
+
+  //   // Add deleted connections back with 0% score for display
+  //   const deletedConnectionsToShow: Connection[] = [];
+  //   currentState.deletedConnections.forEach(deletedId => {
+  //     const [windowId1, windowId2] = deletedId.split('--');
+  //     // Only add if both windows still exist
+  //     if (windows.some(w => w.id === windowId1) && windows.some(w => w.id === windowId2)) {
+  //       deletedConnectionsToShow.push({
+  //         windowId1,
+  //         windowId2,
+  //         score: 0,
+  //         keywords: []
+  //       });
+  //     }
+  //   });
+
+  //   const allConnections = [...connections, ...deletedConnectionsToShow];
+
+  //   console.log('✅ Created connections:', allConnections);
+  //   eventBus.emit('system:output', {
+  //     text: `✅ Created connections:\n${JSON.stringify(allConnections, null, 2)}\n\n`
+  //   });
+
+  //   setState(prev => ({ ...prev, connections: allConnections }));
+  // }, []);
+
+
   const addNaturalScatter = (position: { x: number; y: number }, width: number, height: number): { x: number; y: number } => {
     const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
     const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 1080;
@@ -167,6 +256,12 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
   };
 
   const openWindow = (windowData: Omit<WindowData, 'isOpen' | 'zIndex'>) => {
+    // Extract keywords from content if available
+    // const windowContent = contentSimilarityAnalyzer.processWindowContent(
+    //   windowData.id,
+    //   windowData.title,
+    //   windowData.content || ''
+    // );
     setState(prev => {
       const currentWindows = prev.windows.filter(w => w.id !== windowData.id);
 
@@ -180,7 +275,9 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         isOpen: true,
         isFullscreen: false,
         zIndex: prev.nextZIndex,
-        animationState: 'opening' as const
+        animationState: 'opening' as const,
+        // keywords: windowContent.keywords,
+        contentHash: windowData.content?.slice(0, 100)
       };
 
       const newState = {
@@ -219,6 +316,11 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
           )
         }));
       }, 80);
+
+      // Trigger similarity analysis after state is updated
+      // setTimeout(() => {
+      //   analyzeWindowSimilarities(newState.windows, newState);
+      // }, 100);
 
       return newState;
     });
@@ -309,15 +411,70 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
   };
 
   const updateWindowPosition = (windowId: string, x: number, y: number) => {
-    setState(prev => ({
-      ...prev,
-      windows: prev.windows.map(w =>
-        w.id === windowId
-          ? { ...w, x, y }
-          : w
-      )
-    }));
+    // Use requestAnimationFrame to batch position updates
+    requestAnimationFrame(() => {
+      setState(prev => ({
+        ...prev,
+        windows: prev.windows.map(w =>
+          w.id === windowId
+            ? { ...w, x, y }
+            : w
+        )
+      }));
+
+      // Emit event for real-time connection updates (throttled)
+      setTimeout(() => {
+        try {
+          eventBus.emit('window:position_changed', { windowId, x, y });
+        } catch {}
+      }, 0);
+    });
   };
+
+  // const toggleConnections = () => {
+  //   setState(prev => ({ ...prev, showConnections: !prev.showConnections }));
+  // };
+
+  // const setSimilarityThreshold = (threshold: number) => {
+  //   setState(prev => ({ ...prev, similarityThreshold: threshold }));
+  // };
+
+  // const deleteConnection = (connectionToDelete: Connection) => {
+  //   const connectionId = getConnectionId(connectionToDelete.windowId1, connectionToDelete.windowId2);
+
+  //   setState(prev => {
+  //     const newDeletedConnections = new Set(prev.deletedConnections);
+  //     newDeletedConnections.add(connectionId);
+
+  //     // Remove the connection from active connections and add to deleted list
+  //     const updatedConnections = prev.connections.filter(conn =>
+  //       !(conn.windowId1 === connectionToDelete.windowId1 &&
+  //         conn.windowId2 === connectionToDelete.windowId2) &&
+  //       !(conn.windowId1 === connectionToDelete.windowId2 &&
+  //         conn.windowId2 === connectionToDelete.windowId1)
+  //     );
+
+  //     // Add the deleted connection back with 0% score
+  //     updatedConnections.push({
+  //       windowId1: connectionToDelete.windowId1,
+  //       windowId2: connectionToDelete.windowId2,
+  //       score: 0,
+  //       keywords: []
+  //     });
+
+  //     return {
+  //       ...prev,
+  //       connections: updatedConnections,
+  //       deletedConnections: newDeletedConnections
+  //     };
+  //   });
+
+  //   // Log the deletion
+  //   console.log('🗑️ Connection permanently deleted:', connectionToDelete);
+  //   eventBus.emit('system:output', {
+  //     text: `🗑️ Connection permanently deleted between "${connectionToDelete.windowId1}" and "${connectionToDelete.windowId2}" - will stay at 0% for session\n`
+  //   });
+  // };
 
   useImperativeHandle(ref, () => ({
     openWindow,
@@ -325,7 +482,9 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
     minimizeWindow,
     restoreWindow,
     toggleFullscreen,
-    getWindows: () => state.windows
+    getWindows: () => state.windows,
+    // toggleConnections,
+    // setSimilarityThreshold
   }));
 
   useEffect(() => {
@@ -342,21 +501,40 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         openWindow({
           id,
           title,
+          content: String(data?.content || ''),
           component: () => (
-            <div className="p-4 text-gray-800 text-sm whitespace-pre-wrap">{String(data?.content || '')}</div>
+            <div className="p-4 text-cyan-200 text-sm whitespace-pre-wrap">{String(data?.content || '')}</div>
           ),
           isMinimized: false,
           isFullscreen: false,
           x: 0,
           y: 0,
-          width: data?.size?.width ?? 360,
-          height: data?.size?.height ?? 240
+          width: data?.size?.width ?? 500,
+          height: data?.size?.height ?? 400
         });
       }),
       eventBus.on('ui:close_window', (data: { windowId?: string }) => {
         if (data?.windowId) {
           closeWindow(data.windowId);
         }
+      }),
+      eventBus.on('window:content_changed', (data: { windowId: string; content: string; title?: string }) => {
+        setState(prev => ({
+          ...prev,
+          windows: prev.windows.map(w =>
+            w.id === data.windowId
+              ? { ...w, content: data.content, title: data.title || w.title }
+              : w
+          )
+        }));
+
+        // Re-analyze similarities after a short delay to debounce rapid changes
+        // setTimeout(() => {
+        //   setState(currentState => {
+        //     analyzeWindowSimilarities(currentState.windows, currentState);
+        //     return currentState;
+        //   });
+        // }, 500);
       })
     ];
     return () => { unsubs.forEach((u) => u()); };
@@ -374,6 +552,23 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(255,119,198,0.2),transparent_50%)]"></div>
         {children}
       </div>
+
+      {/* Connection Controls */}
+      {/* <ConnectionControls
+        showConnections={state.showConnections}
+        similarityThreshold={state.similarityThreshold}
+        onToggleConnections={toggleConnections}
+        onThresholdChange={setSimilarityThreshold}
+      /> */}
+
+      {/* Connection Renderer */}
+      {/* <ConnectionRenderer
+        windows={state.windows}
+        connections={state.connections}
+        isVisible={state.showConnections}
+        minSimilarityThreshold={state.similarityThreshold}
+        onDeleteConnection={deleteConnection}
+      /> */}
 
       {/* Render Windows */}
       {state.windows.map(window => {

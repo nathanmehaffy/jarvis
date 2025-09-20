@@ -94,7 +94,7 @@ export function PieChart({
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center p-4">
-      <h3 className="text-xl font-semibold text-gray-800 mb-4">{title}</h3>
+      <h3 className="text-xl font-semibold text-cyan-200 mb-4">{title}</h3>
 
       <div className="flex items-start justify-center space-x-12">
         {/* Pie Chart */}
@@ -150,7 +150,7 @@ export function PieChart({
                 y={centerY}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className="text-lg font-semibold fill-gray-700"
+                className="text-lg font-semibold fill-cyan-200"
               >
                 Total
               </text>
@@ -177,11 +177,11 @@ export function PieChart({
         {/* Legend */}
         {showLegend && (
           <div className="flex flex-col space-y-2">
-            <h4 className="text-sm font-semibold text-gray-700 mb-2">Legend</h4>
+            <h4 className="text-sm font-semibold text-cyan-200 mb-2">Legend</h4>
             {pieSlices.map((slice, index) => (
               <div
                 key={index}
-                className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 rounded px-2 py-1 transition-colors"
+                className="flex items-center space-x-2 cursor-pointer hover:bg-gray-700/50 rounded px-2 py-1 transition-colors"
                 onMouseEnter={() => setHoveredSlice(slice)}
                 onMouseLeave={() => setHoveredSlice(null)}
               >
@@ -190,8 +190,8 @@ export function PieChart({
                   style={{ backgroundColor: slice.color }}
                 />
                 <div className="text-sm">
-                  <div className="font-medium text-gray-800">{slice.label}</div>
-                  <div className="text-xs text-gray-500">
+                  <div className="font-medium text-gray-100">{slice.label}</div>
+                  <div className="text-xs text-gray-300">
                     {slice.value.toFixed(1)} ({slice.percentage.toFixed(1)}%)
                   </div>
                 </div>

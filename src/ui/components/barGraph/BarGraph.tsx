@@ -12,8 +12,8 @@ export function BarGraph({
   yAxisLabel = 'Y Axis',
   barColor = '#3b82f6',
   barHoverColor = '#1d4ed8',
-  gridColor = '#e5e7eb',
-  backgroundColor = '#ffffff',
+  gridColor = '#374151',
+  backgroundColor = 'transparent',
   showGrid = true,
   showValues = true,
   barSpacing = 0.2,
@@ -103,7 +103,7 @@ export function BarGraph({
         x={scaleX(index) + barWidth / 2}
         y={chartHeight + 20}
         textAnchor="middle"
-        className="text-xs fill-gray-600"
+        className="text-xs fill-gray-300"
       >
         {point.label}
       </text>
@@ -124,7 +124,7 @@ export function BarGraph({
           x={-10}
           y={y + 4}
           textAnchor="end"
-          className="text-xs fill-gray-600"
+          className="text-xs fill-gray-300"
         >
           {value.toFixed(1)}
         </text>
@@ -144,13 +144,11 @@ export function BarGraph({
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center p-4">
-      <h3 className="text-xl font-semibold text-gray-800 mb-4">{title}</h3>
-
       <div className="relative">
         <svg
           width={width}
           height={height}
-          className="border border-gray-200 rounded-lg"
+          className="border border-gray-600/30 rounded-lg"
           style={{ backgroundColor }}
           onMouseMove={handleMouseMove}
           onMouseLeave={() => setHoveredBar(null)}
@@ -188,7 +186,7 @@ export function BarGraph({
                       x={x + barWidth / 2}
                       y={point.y >= 0 ? y - 5 : y + barHeight + 15}
                       textAnchor="middle"
-                      className="text-xs fill-gray-700 font-medium"
+                      className="text-xs fill-gray-100 font-medium"
                     >
                       {point.y.toFixed(1)}
                     </text>
@@ -207,7 +205,7 @@ export function BarGraph({
             x={width / 2}
             y={height - 20}
             textAnchor="middle"
-            className="text-sm font-medium fill-gray-700"
+            className="text-sm font-medium fill-cyan-200"
           >
             {xAxisLabel}
           </text>
@@ -217,7 +215,7 @@ export function BarGraph({
             y={height / 2}
             textAnchor="middle"
             transform={`rotate(-90, 20, ${height / 2})`}
-            className="text-sm font-medium fill-gray-700"
+            className="text-sm font-medium fill-cyan-200"
           >
             {yAxisLabel}
           </text>
