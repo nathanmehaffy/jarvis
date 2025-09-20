@@ -1,10 +1,10 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { eventBus } from '@/lib/eventBus';
 import type { Task } from './types';
 
 export class AIManager {
   private worker: Worker | null = null;
   private isInitialized = false;
+  private uiContext: any = {};
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
@@ -37,26 +37,13 @@ export class AIManager {
       // Bridge: when input emits parsed tasks, forward to AI worker as a text command-like batch
       eventBus.on('input:tasks', (data: { tasks: Array<{ id: string; text: string }> }) => {
         try {
-          const tasks: Task[] = (data?.tasks || []).map((t, index) => ({
-            id: t.id || `${Date.now()}_${index}`,
-            tool: 'open_window',
-            parameters: {
-              windowType: 'general',
-              context: {
-                title: 'Task',
-                content: t.text,
-                type: 'general'
-              }
-            },
-            description: `Open window for: ${t.text}`
-          }));
-
-          // Indicate processing started
-          eventBus.emit('ai:processing', { count: tasks.length });
-
-          this.worker?.postMessage({
-            type: 'PROCESS_AI_REQUEST',
-            data: { tasks }
+          const taskList = data?.tasks || [];
+          eventBus.emit('ai:processing', { count: taskList.length });
+          taskList.forEach((t) => {
+            this.worker?.postMessage({
+              type: 'PROCESS_TEXT_COMMAND',
+              data: { text: t.text, uiContext: this.uiContext }
+            });
           });
         } catch (e) {
           eventBus.emit('ai:error', e);
@@ -68,6 +55,10 @@ export class AIManager {
     }
   }
 
+  setUIContext(context: any): void {
+    this.uiContext = context;
+  }
+
   processRequest(request: any): void {
     if (!this.worker) {
       console.warn('AI worker not initialized');
@@ -76,7 +67,7 @@ export class AIManager {
 
     this.worker.postMessage({
       type: 'PROCESS_AI_REQUEST',
-      data: request
+      data: { ...request, uiContext: this.uiContext }
     });
   }
 
@@ -88,7 +79,7 @@ export class AIManager {
 
     this.worker.postMessage({
       type: 'PROCESS_TEXT_COMMAND',
-      data: text
+      data: { text, uiContext: this.uiContext }
     });
   }
 

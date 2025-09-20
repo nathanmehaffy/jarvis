@@ -45,7 +45,7 @@ export function MainUI() {
     return () => { unsubs.forEach(u => u()); };
   }, []);
 
-  const openInputWindow = () => {
+  const handleOpenInputWindow = () => {
     windowManagerRef.current?.openWindow({
       id: 'input-window',
       title: 'Input Manager',
@@ -57,7 +57,7 @@ export function MainUI() {
     });
   };
 
-  const openAIWindow = () => {
+  const handleOpenAIWindow = () => {
     windowManagerRef.current?.openWindow({
       id: 'ai-window',
       title: 'AI Manager',
@@ -69,7 +69,7 @@ export function MainUI() {
     });
   };
 
-  const openUserNotesWindow = () => {
+  const handleOpenUserNotesWindow = () => {
     windowManagerRef.current?.openWindow({
       id: 'user-notes-window',
       title: 'Personal Notes',
@@ -81,7 +81,7 @@ export function MainUI() {
     });
   };
 
-  const openSystemOutputWindow = () => {
+  const handleOpenSystemOutputWindow = () => {
     windowManagerRef.current?.openWindow({
       id: 'system-output-window',
       title: 'System Output',
@@ -110,7 +110,7 @@ export function MainUI() {
     openImageViewerWindow(imageUrl, imageName);
   };
 
-  const openGraphWindow = () => {
+  const handleOpenGraphWindow = () => {
     windowManagerRef.current?.openWindow({
       id: 'graph-window',
       title: 'Line Graph',
@@ -122,7 +122,7 @@ export function MainUI() {
     });
   };
 
-  const openBarGraphWindow = () => {
+  const handleOpenBarGraphWindow = () => {
     windowManagerRef.current?.openWindow({
       id: 'bar-graph-window',
       title: 'Bar Graph',
@@ -134,7 +134,7 @@ export function MainUI() {
     });
   };
 
-  const openPieChartWindow = () => {
+  const handleOpenPieChartWindow = () => {
     windowManagerRef.current?.openWindow({
       id: 'pie-chart-window',
       title: 'Pie Chart',
@@ -146,7 +146,7 @@ export function MainUI() {
     });
   };
 
-  const openPreloadedImageWindow = () => {
+  const handleOpenPreloadedImageWindow = () => {
     const preloadedImageUrl = 'https://picsum.photos/600/400?random=1';
     const imageName = 'Sample Image';
     openImageViewerWindow(preloadedImageUrl, imageName);
@@ -154,21 +154,26 @@ export function MainUI() {
 
   return (
     <div className="min-h-screen">
-      <WindowManager ref={windowManagerRef}>
+      <WindowManager
+        ref={windowManagerRef}
+        onWindowsChange={(windows) => {
+          aiManager.setUIContext({ windows });
+        }}
+      >
         <AnimatedBackground />
         <VoiceTaskListener />
         <DebugSidebar
           inputStatus={inputStatus}
           aiStatus={aiStatus}
           apiBudget={apiBudget}
-          openInputWindow={openInputWindow}
-          openAIWindow={openAIWindow}
-          openUserNotesWindow={openUserNotesWindow}
-          openSystemOutputWindow={openSystemOutputWindow}
-          openGraphWindow={openGraphWindow}
-          openBarGraphWindow={openBarGraphWindow}
-          openPieChartWindow={openPieChartWindow}
-          openPreloadedImageWindow={openPreloadedImageWindow}
+          openInputWindow={handleOpenInputWindow}
+          openAIWindow={handleOpenAIWindow}
+          openUserNotesWindow={handleOpenUserNotesWindow}
+          openSystemOutputWindow={handleOpenSystemOutputWindow}
+          openGraphWindow={handleOpenGraphWindow}
+          openBarGraphWindow={handleOpenBarGraphWindow}
+          openPieChartWindow={handleOpenPieChartWindow}
+          openPreloadedImageWindow={handleOpenPreloadedImageWindow}
         />
         <div className="absolute bottom-6 right-6 z-10">
           <ImageDropZone onImageUpload={handleImageUpload} />

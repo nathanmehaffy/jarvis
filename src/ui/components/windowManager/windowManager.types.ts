@@ -2,6 +2,7 @@ export interface WindowData {
   id: string;
   title: string;
   component: React.ComponentType;
+  content?: string;
   isOpen: boolean;
   x: number;
   y: number;

@@ -10,12 +10,20 @@ export class TaskParser {
     this.cerebrasClient = new CerebrasClient(apiKey);
   }
 
-  async parseTextToTasks(text: string): Promise<AIProcessingResult> {
+  async parseTextToTasks(text: string, uiContext: any = {}): Promise<AIProcessingResult> {
     try {
       const startTime = Date.now();
+      console.log('[TaskParser] parseTextToTasks called', {
+        textPreview: typeof text === 'string' ? text.slice(0, 80) : typeof text,
+        uiWindows: Array.isArray(uiContext?.windows) ? uiContext.windows.length : 0
+      });
       
       // Use Cerebras to process the natural language input
-      const response = await this.cerebrasClient.processTextToTasks(text, AVAILABLE_TOOLS);
+      const response = await this.cerebrasClient.processTextToTasks(text, AVAILABLE_TOOLS, uiContext);
+      console.log('[TaskParser] Cerebras response received', {
+        hasChoices: Boolean((response as any)?.choices?.length),
+        toolCalls: ((response as any)?.choices?.[0]?.message?.tool_calls || []).length
+      });
       
       let tasks: Task[] = [];
       
@@ -63,6 +71,9 @@ export class TaskParser {
       
     } catch (error) {
       console.error('Error parsing text to tasks:', error);
+      try {
+        console.log('[TaskParser] Falling back to local parsing for input');
+      } catch {}
       
       // Fallback to simple parsing if Cerebras fails
       const fallbackTasks = this.fallbackParsing(text);
