@@ -15,14 +15,14 @@ import { PieChartWindow } from './components/pieChart';
 import { AnimatedBackground } from './components/background';
 import { ImageDropZone } from './components/imageDropZone';
 import { ImageViewer } from './components/imageViewer';
-
-//
+import { DebugSidebar } from './components/debugSidebar';
 
 export function MainUI() {
   const windowManagerRef = useRef<WindowManagerRef>(null);
   const [inputStatus, setInputStatus] = useState<'idle' | 'listening' | 'processing' | 'error'>('idle');
   const [aiStatus, setAiStatus] = useState<'idle' | 'processing' | 'ready' | 'error'>('idle');
   const [apiBudget, setApiBudget] = useState<{ used: number; nextMs: number | null }>({ used: 0, nextMs: null });
+
   useEffect(() => {
     aiManager.initialize();
     inputManager.initialize();
@@ -44,6 +44,7 @@ export function MainUI() {
     ];
     return () => { unsubs.forEach(u => u()); };
   }, []);
+
   const openInputWindow = () => {
     windowManagerRef.current?.openWindow({
       id: 'input-window',
@@ -155,120 +156,22 @@ export function MainUI() {
     <div className="min-h-screen">
       <WindowManager ref={windowManagerRef}>
         <AnimatedBackground />
-        {/* Voice listener */}
         <VoiceTaskListener />
-        
-        {/* Image Drop Zone - Right Side */}
-        <div className="absolute top-6 right-6 z-10">
-          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-6 text-white shadow-2xl mb-6 w-64">
-            <h2 className="text-lg font-semibold mb-4 text-center break-words">Image Upload</h2>
-            <ImageDropZone onImageUpload={handleImageUpload} />
-          </div>
-
-          {/* Debug indicators */}
-          <div className="space-y-2">
-            <div className="px-3 py-2 rounded-xl bg-black/40 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="mr-2">Input</span>
-                <span className={`px-2 py-0.5 rounded ${inputStatus === 'listening' ? 'bg-red-500' : inputStatus === 'processing' ? 'bg-yellow-500' : inputStatus === 'error' ? 'bg-rose-600' : 'bg-gray-500'}`}>{inputStatus}</span>
-              </div>
-              <div className="mt-1 text-[10px] text-white/80">API/min: {apiBudget.used}{apiBudget.nextMs != null ? ` • next ${Math.max(0, Math.round(apiBudget.nextMs/1000))}s` : ''}</div>
-            </div>
-            <div className="px-3 py-2 rounded-xl bg-black/40 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="mr-2">AI</span>
-                <span className={`px-2 py-0.5 rounded ${aiStatus === 'processing' ? 'bg-yellow-500' : aiStatus === 'error' ? 'bg-rose-600' : 'bg-emerald-600'}`}>{aiStatus}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Desktop Content */}
-        <div className="absolute top-6 left-6 z-10">
-          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 text-white shadow-2xl">
-            <div className="flex items-center mb-6">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-xl mr-3 flex items-center justify-center">
-                <div className="w-4 h-4 bg-white rounded-full opacity-80"></div>
-              </div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
-                Jarvis Desktop
-              </h1>
-            </div>
-            <div className="space-y-3">
-              <button
-                onClick={openInputWindow}
-                className="group block w-full px-6 py-4 bg-gradient-to-r from-blue-500/60 to-indigo-600/60 hover:from-blue-500/80 hover:to-indigo-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
-              >
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-blue-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                  <span className="font-semibold">Open Input Window</span>
-                </div>
-              </button>
-              <button
-                onClick={openAIWindow}
-                className="group block w-full px-6 py-4 bg-gradient-to-r from-emerald-500/60 to-green-600/60 hover:from-emerald-500/80 hover:to-green-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
-              >
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-emerald-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                  <span className="font-semibold">Open AI Window</span>
-                </div>
-              </button>
-              <button
-                onClick={openUserNotesWindow}
-                className="group block w-full px-6 py-4 bg-gradient-to-r from-blue-500/60 to-indigo-600/60 hover:from-blue-500/80 hover:to-indigo-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
-              >
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-blue-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                  <span className="font-semibold">Open Personal Notes</span>
-                </div>
-              </button>
-              <button
-                onClick={openSystemOutputWindow}
-                className="group block w-full px-6 py-4 bg-gradient-to-r from-green-500/60 to-emerald-600/60 hover:from-green-500/80 hover:to-emerald-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
-              >
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-green-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                  <span className="font-semibold">Open System Output</span>
-                </div>
-              </button>
-              <button
-                onClick={openGraphWindow}
-                className="group block w-full px-6 py-4 bg-gradient-to-r from-purple-500/60 to-pink-600/60 hover:from-purple-500/80 hover:to-pink-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
-              >
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-purple-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                  <span className="font-semibold">Open Line Graph</span>
-                </div>
-              </button>
-              <button
-                onClick={openBarGraphWindow}
-                className="group block w-full px-6 py-4 bg-gradient-to-r from-orange-500/60 to-red-600/60 hover:from-orange-500/80 hover:to-red-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
-              >
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-orange-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                  <span className="font-semibold">Open Bar Graph</span>
-                </div>
-              </button>
-              <button
-                onClick={openPieChartWindow}
-                className="group block w-full px-6 py-4 bg-gradient-to-r from-pink-500/60 to-purple-600/60 hover:from-pink-500/80 hover:to-purple-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
-              >
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-pink-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                  <span className="font-semibold">Open Pie Chart</span>
-                </div>
-              </button>
-              <button
-                onClick={openPreloadedImageWindow}
-                className="group block w-full px-6 py-4 bg-gradient-to-r from-teal-500/60 to-cyan-600/60 hover:from-teal-500/80 hover:to-cyan-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
-              >
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-teal-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                  <span className="font-semibold">Open Sample Image</span>
-                </div>
-              </button>
-            </div>
-          </div>
+        <DebugSidebar
+          inputStatus={inputStatus}
+          aiStatus={aiStatus}
+          apiBudget={apiBudget}
+          openInputWindow={openInputWindow}
+          openAIWindow={openAIWindow}
+          openUserNotesWindow={openUserNotesWindow}
+          openSystemOutputWindow={openSystemOutputWindow}
+          openGraphWindow={openGraphWindow}
+          openBarGraphWindow={openBarGraphWindow}
+          openPieChartWindow={openPieChartWindow}
+          openPreloadedImageWindow={openPreloadedImageWindow}
+        />
+        <div className="absolute bottom-6 right-6 z-10">
+          <ImageDropZone onImageUpload={handleImageUpload} />
         </div>
       </WindowManager>
     </div>
