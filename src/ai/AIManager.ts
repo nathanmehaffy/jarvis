@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { eventBus } from '@/lib/eventBus';
+import type { Task } from './types';
 
 export class AIManager {
   private worker: Worker | null = null;
@@ -13,6 +14,15 @@ export class AIManager {
       
       this.worker.onmessage = (event) => {
         const { type, data } = event.data;
+        // Bridge UI_* messages to UI event bus
+        if (type === 'UI_OPEN_WINDOW') {
+          eventBus.emit('ui:open_window', data);
+          return;
+        }
+        if (type === 'UI_CLOSE_WINDOW') {
+          eventBus.emit('ui:close_window', data);
+          return;
+        }
         eventBus.emit(`ai:${type.toLowerCase()}`, data);
       };
 
@@ -23,6 +33,35 @@ export class AIManager {
 
       this.isInitialized = true;
       eventBus.emit('ai:initialized');
+
+      // Bridge: when input emits parsed tasks, forward to AI worker as a text command-like batch
+      eventBus.on('input:tasks', (data: { tasks: Array<{ id: string; text: string }> }) => {
+        try {
+          const tasks: Task[] = (data?.tasks || []).map((t, index) => ({
+            id: t.id || `${Date.now()}_${index}`,
+            tool: 'open_window',
+            parameters: {
+              windowType: 'general',
+              context: {
+                title: 'Task',
+                content: t.text,
+                type: 'general'
+              }
+            },
+            description: `Open window for: ${t.text}`
+          }));
+
+          // Indicate processing started
+          eventBus.emit('ai:processing', { count: tasks.length });
+
+          this.worker?.postMessage({
+            type: 'PROCESS_AI_REQUEST',
+            data: { tasks }
+          });
+        } catch (e) {
+          eventBus.emit('ai:error', e);
+        }
+      });
     } catch (error) {
       console.error('Failed to initialize AI worker:', error);
       eventBus.emit('ai:error', error);

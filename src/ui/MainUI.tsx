@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { aiManager } from '@/ai';
+import { inputManager, VoiceTaskListener } from '@/input';
+import { eventBus } from '@/lib/eventBus';
 import { WindowManager, WindowManagerRef } from './components/windowManager';
 import { InputWindow } from './components/inputWindow';
 import { AIWindow } from './components/aiWindow';
@@ -18,8 +20,29 @@ import { ImageViewer } from './components/imageViewer';
 
 export function MainUI() {
   const windowManagerRef = useRef<WindowManagerRef>(null);
+  const [inputStatus, setInputStatus] = useState<'idle' | 'listening' | 'processing' | 'error'>('idle');
+  const [aiStatus, setAiStatus] = useState<'idle' | 'processing' | 'ready' | 'error'>('idle');
+  const [apiBudget, setApiBudget] = useState<{ used: number; nextMs: number | null }>({ used: 0, nextMs: null });
   useEffect(() => {
     aiManager.initialize();
+    inputManager.initialize();
+
+    const unsubs = [
+      eventBus.on('input:initialized', () => setInputStatus('idle')),
+      eventBus.on('speech:started', () => setInputStatus('listening')),
+      eventBus.on('speech:ended', () => setInputStatus('idle')),
+      eventBus.on('input:voice_debug', (d: any) => {
+        setInputStatus((d?.status as any) || 'idle');
+        setApiBudget({ used: d?.apiCallsUsedLastMinute ?? 0, nextMs: d?.nextCallInMs ?? null });
+      }),
+      eventBus.on('ai:initialized', () => setAiStatus('ready')),
+      eventBus.on('ai:processing', () => setAiStatus('processing')),
+      eventBus.on('ai:ai_tasks_executed', () => setAiStatus('ready')),
+      eventBus.on('ai:text_command_processed', () => setAiStatus('ready')),
+      eventBus.on('ai:ai_response_generated', () => setAiStatus('ready')),
+      eventBus.on('ai:error', () => setAiStatus('error'))
+    ];
+    return () => { unsubs.forEach(u => u()); };
   }, []);
   const openInputWindow = () => {
     windowManagerRef.current?.openWindow({
@@ -132,12 +155,31 @@ export function MainUI() {
     <div className="min-h-screen">
       <WindowManager ref={windowManagerRef}>
         <AnimatedBackground />
+        {/* Voice listener */}
+        <VoiceTaskListener />
         
         {/* Image Drop Zone - Right Side */}
         <div className="absolute top-6 right-6 z-10">
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-6 text-white shadow-2xl mb-6 w-64">
             <h2 className="text-lg font-semibold mb-4 text-center break-words">Image Upload</h2>
             <ImageDropZone onImageUpload={handleImageUpload} />
+          </div>
+
+          {/* Debug indicators */}
+          <div className="space-y-2">
+            <div className="px-3 py-2 rounded-xl bg-black/40 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="mr-2">Input</span>
+                <span className={`px-2 py-0.5 rounded ${inputStatus === 'listening' ? 'bg-red-500' : inputStatus === 'processing' ? 'bg-yellow-500' : inputStatus === 'error' ? 'bg-rose-600' : 'bg-gray-500'}`}>{inputStatus}</span>
+              </div>
+              <div className="mt-1 text-[10px] text-white/80">API/min: {apiBudget.used}{apiBudget.nextMs != null ? ` • next ${Math.max(0, Math.round(apiBudget.nextMs/1000))}s` : ''}</div>
+            </div>
+            <div className="px-3 py-2 rounded-xl bg-black/40 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="mr-2">AI</span>
+                <span className={`px-2 py-0.5 rounded ${aiStatus === 'processing' ? 'bg-yellow-500' : aiStatus === 'error' ? 'bg-rose-600' : 'bg-emerald-600'}`}>{aiStatus}</span>
+              </div>
+            </div>
           </div>
         </div>
 

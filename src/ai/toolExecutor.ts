@@ -83,6 +83,17 @@ export class ToolExecutor {
     
     // Also emit a general window event
     eventBus.emit('window:opened', windowData);
+
+    // If running inside a Web Worker, forward to the main thread
+    // so the UI (which listens on the main thread) can react.
+    try {
+      // In a worker, globalThis/self has postMessage and window is undefined
+      if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
+        (self as any).postMessage({ type: 'UI_OPEN_WINDOW', data: windowData });
+      }
+    } catch (_) {
+      // no-op if environment detection fails
+    }
     
     console.log(`[ToolExecutor] Opening ${params.windowType} window:`, windowData);
     
@@ -117,6 +128,15 @@ export class ToolExecutor {
     
     // Also emit a general window event
     eventBus.emit('window:closed', closeData);
+
+    // If running inside a Web Worker, forward to the main thread
+    try {
+      if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
+        (self as any).postMessage({ type: 'UI_CLOSE_WINDOW', data: closeData });
+      }
+    } catch (_) {
+      // no-op
+    }
     
     console.log(`[ToolExecutor] Closing window:`, closeData);
     

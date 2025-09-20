@@ -2,10 +2,52 @@ import { NextRequest } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { prompt } = await request.json();
+    const body = await request.json().catch(() => ({}));
+    let cerebrasRequest = body?.cerebrasRequest;
 
     if (!process.env.CEREBRAS_API_KEY) {
       return new Response(JSON.stringify({ error: 'Missing CEREBRAS_API_KEY' }), { status: 500 });
+    }
+
+    // Backward compatibility: accept { prompt } and wrap it into a minimal request
+    if (!cerebrasRequest && typeof body?.prompt === 'string' && body.prompt.trim().length > 0) {
+      cerebrasRequest = {
+        model: 'llama3.1-8b',
+        messages: [{ role: 'user', content: body.prompt }],
+        temperature: 0.2,
+        max_tokens: 512
+      };
+      // We'll try to unwrap this shaped response below if needed
+      const proxied = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.CEREBRAS_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(cerebrasRequest)
+      });
+
+      if (!proxied.ok) {
+        const text = await proxied.text();
+        return new Response(JSON.stringify({ error: `Upstream error ${proxied.status}`, detail: text }), { status: 502 });
+      }
+
+      const data = await proxied.json();
+      const content: unknown = data?.choices?.[0]?.message?.content;
+      if (typeof content === 'string') {
+        try {
+          const parsed = JSON.parse(content);
+          return Response.json(parsed);
+        } catch {
+          // Not JSON; return a safe default
+          return Response.json({ tasks: [], remainder: content });
+        }
+      }
+      return Response.json({ tasks: [], remainder: '' });
+    }
+
+    if (!cerebrasRequest) {
+      return new Response(JSON.stringify({ error: 'Missing cerebrasRequest in body' }), { status: 400 });
     }
 
     const response = await fetch('https://api.cerebras.ai/v1/chat/completions', {
@@ -14,12 +56,7 @@ export async function POST(request: NextRequest) {
         'Authorization': `Bearer ${process.env.CEREBRAS_API_KEY}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model: 'gpt-oss-120b',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.5,
-        max_tokens: 1024
-      })
+      body: JSON.stringify(cerebrasRequest)
     });
 
     if (!response.ok) {
@@ -28,21 +65,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-
-    // Expect standard OpenAI-like shape
-    const content = data?.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') {
-      return new Response(JSON.stringify({ error: 'Invalid upstream response' }), { status: 502 });
-    }
-
-    // Ensure we return valid JSON only
-    try {
-      const parsed = JSON.parse(content);
-      return Response.json(parsed);
-    } catch {
-      // If model returns non-JSON, surface as 502 to trigger client retry policy
-      return new Response(JSON.stringify({ error: 'Non-JSON model response' }), { status: 502 });
-    }
+    return Response.json(data);
   } catch (error) {
     return new Response(JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) }), { status: 500 });
   }

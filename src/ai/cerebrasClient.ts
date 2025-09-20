@@ -2,51 +2,20 @@
 import { CerebrasRequest, CerebrasResponse, Tool, CerebrasTool } from './types';
 
 export class CerebrasClient {
-  private apiKey: string;
-  private baseUrl: string;
-
-  constructor(apiKey?: string) {
-    // In browser environment, we need to get the API key differently
-    this.apiKey = apiKey || this.getApiKey();
-    this.baseUrl = 'https://api.cerebras.ai/v1';
-    
-    if (!this.apiKey) {
-      console.warn('Cerebras API key not found. Set CEREBRAS_API_KEY environment variable.');
-    }
-  }
-
-  private getApiKey(): string {
-    // Check multiple sources for the API key
-    if (typeof process !== 'undefined' && process.env && process.env.CEREBRAS_API_KEY) {
-      return process.env.CEREBRAS_API_KEY;
-    }
-    
-    // For client-side, we'll need to get it from a different source
-    // In Next.js, client-side env vars need to be prefixed with NEXT_PUBLIC_
-    if (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_CEREBRAS_API_KEY) {
-      return process.env.NEXT_PUBLIC_CEREBRAS_API_KEY;
-    }
-    
-    return '';
-  }
+  // Client no longer holds API key; all calls go through server route
+  constructor(_apiKey?: string) {}
 
   async createChatCompletion(request: CerebrasRequest): Promise<CerebrasResponse> {
-    if (!this.apiKey) {
-      throw new Error('Cerebras API key is required. Please set CEREBRAS_API_KEY environment variable.');
-    }
-
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+    // Always call our internal API route which adds auth server-side
+    const response = await fetch('/api/cerebras-tasks', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cerebrasRequest: request })
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Cerebras API error (${response.status}): ${errorText}`);
+      throw new Error(`Internal API error (${response.status}): ${errorText}`);
     }
 
     return await response.json() as CerebrasResponse;

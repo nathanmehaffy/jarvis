@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { Window } from '../window';
 import { WindowData, WindowManagerState } from './windowManager.types';
+import { eventBus } from '@/lib/eventBus';
 
 interface WindowManagerProps {
   children: React.ReactNode;
@@ -61,6 +62,33 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(({
     openWindow,
     closeWindow
   }));
+
+  // Listen for AI/UI events to open/close windows
+  useEffect(() => {
+    const unsubs = [
+      eventBus.on('ui:open_window', (data: any) => {
+        const id = data?.id || `win_${Date.now()}`;
+        const title = data?.title || 'Window';
+        openWindow({
+          id,
+          title,
+          component: () => (
+            <div className="p-4 text-gray-800 text-sm whitespace-pre-wrap">{String(data?.content || '')}</div>
+          ),
+          x: data?.position?.x ?? 120,
+          y: data?.position?.y ?? 120,
+          width: data?.size?.width ?? 360,
+          height: data?.size?.height ?? 240
+        });
+      }),
+      eventBus.on('ui:close_window', (data: any) => {
+        if (data?.windowId) {
+          closeWindow(data.windowId);
+        }
+      })
+    ];
+    return () => { unsubs.forEach((u) => u()); };
+  }, []);
 
   return (
     <div className="relative w-full h-full">

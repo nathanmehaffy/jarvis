@@ -83,6 +83,22 @@ async function processTextCommand(textInput: any) {
 
 async function processAIRequest(request: any) {
   try {
+    // If pre-parsed tasks are provided, execute them directly
+    if (Array.isArray(request?.tasks)) {
+      const executionResults = await toolExecutor.executeTasks(request.tasks);
+      self.postMessage({
+        type: 'AI_TASKS_EXECUTED',
+        data: {
+          id: request.id || generateId(),
+          success: true,
+          tasks: request.tasks,
+          executionResults,
+          timestamp: Date.now()
+        }
+      });
+      return;
+    }
+
     // Legacy support for existing AI request format
     // Try to extract text from various possible fields
     const text = request.text || request.command || request.input || request.prompt?.text;
