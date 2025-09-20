@@ -6,9 +6,14 @@ export interface WindowProps {
   initialY?: number;
   width?: number;
   height?: number;
+  minWidth?: number;
+  minHeight?: number;
+  maxWidth?: number;
+  maxHeight?: number;
   onClose?: () => void;
   isActive?: boolean;
   onFocus?: () => void;
+  onResize?: (width: number, height: number) => void;
 }
 
 export interface WindowState {
