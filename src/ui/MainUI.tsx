@@ -144,15 +144,21 @@ export function MainUI() {
     });
   };
 
+  const openPreloadedImageWindow = () => {
+    const preloadedImageUrl = 'https://picsum.photos/600/400?random=1';
+    const imageName = 'Sample Image';
+    openImageViewerWindow(preloadedImageUrl, imageName);
+  };
+
   return (
     <div className="min-h-screen">
       <WindowManager ref={windowManagerRef}>
         <AnimatedBackground />
         
-        {/* Image Drop Zone - Left Side */}
-        <div className="absolute top-6 left-80 z-10">
-          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-6 text-white shadow-2xl mb-6">
-            <h2 className="text-lg font-semibold mb-4 text-center">Image Upload</h2>
+        {/* Image Drop Zone - Right Side */}
+        <div className="absolute top-6 right-6 z-10">
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-6 text-white shadow-2xl mb-6 w-64">
+            <h2 className="text-lg font-semibold mb-4 text-center break-words">Image Upload</h2>
             <ImageDropZone onImageUpload={handleImageUpload} />
           </div>
         </div>
@@ -230,6 +236,15 @@ export function MainUI() {
                 <div className="flex items-center">
                   <div className="w-3 h-3 bg-pink-400 rounded-full mr-3 group-hover:animate-pulse"></div>
                   <span className="font-semibold">Open Pie Chart</span>
+                </div>
+              </button>
+              <button
+                onClick={openPreloadedImageWindow}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-teal-500/60 to-cyan-600/60 hover:from-teal-500/80 hover:to-cyan-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-teal-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Sample Image</span>
                 </div>
               </button>
             </div>
