@@ -14,6 +14,7 @@ interface ImageWindowProps {
 	onClose: () => void;
 	onFocus: () => void;
 	imageUrl?: string;
+	animationState?: 'opening' | 'closing' | 'none';
 }
 
 export function ImageWindow({
@@ -25,7 +26,8 @@ export function ImageWindow({
 	height,
 	isActive,
 	onClose,
-	onFocus
+	onFocus,
+	animationState = 'none'
 }: ImageWindowProps) {
 	const windowRef = useRef<HTMLDivElement>(null);
 	const [position, setPosition] = useState({ x: initialX, y: initialY });
@@ -121,13 +123,25 @@ export function ImageWindow({
 		document.removeEventListener('mouseup', onResizeMouseUp);
 	};
 
+	const getAnimationClasses = () => {
+		const baseClasses = 'absolute rounded-2xl shadow-2xl overflow-hidden border-2 backdrop-blur-sm bg-black/20 transition-colors duration-150';
+		const borderClasses = isActive ? 'border-blue-400/80 shadow-blue-400/20' : 'border-white/20';
+
+		switch (animationState) {
+			case 'opening':
+				return `${baseClasses} ${borderClasses} animate-window-open`;
+			case 'closing':
+				return `${baseClasses} ${borderClasses} animate-window-close`;
+			default:
+				return `${baseClasses} ${borderClasses}`;
+		}
+	};
+
 	return (
 		<div
 			ref={windowRef}
 			data-window-id={id}
-			className={`absolute rounded-2xl shadow-2xl overflow-hidden border-2 backdrop-blur-sm bg-black/20 transition-colors duration-150 ${
-				isActive ? 'border-blue-400/80 shadow-blue-400/20' : 'border-white/20'
-			}`}
+			className={getAnimationClasses()}
 			style={{ 
 				left: position.x, 
 				top: position.y, 

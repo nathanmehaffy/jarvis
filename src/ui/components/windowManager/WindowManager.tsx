@@ -12,7 +12,7 @@ interface WindowManagerProps {
 }
 
 export interface WindowManagerRef {
-  openWindow: (windowData: Omit<WindowData, 'isOpen' | 'isMinimized' | 'zIndex'>) => void;
+  openWindow: (windowData: Omit<WindowData, 'isOpen' | 'zIndex'>) => void;
   closeWindow: (windowId: string) => void;
   minimizeWindow: (windowId: string) => void;
   restoreWindow: (windowId: string) => void;
@@ -179,7 +179,8 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         y: scatteredPosition.y,
         isOpen: true,
         isFullscreen: false,
-        zIndex: prev.nextZIndex
+        zIndex: prev.nextZIndex,
+        animationState: 'opening' as const
       };
 
       const newState = {
@@ -192,31 +193,63 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         nextZIndex: prev.nextZIndex + 1
       };
 
-      const windowPositions = newState.windows.map(w =>
-        `${w.title} (${w.id}): x=${Math.round(w.x)}, y=${Math.round(w.y)}, w=${w.width}, h=${w.height}`
-      ).join('\n');
+      // Emit events after state update completes
+      setTimeout(() => {
+        const windowPositions = newState.windows.map(w =>
+          `${w.title} (${w.id}): x=${Math.round(w.x)}, y=${Math.round(w.y)}, w=${w.width}, h=${w.height}`
+        ).join('\n');
 
-      eventBus.emit('system:output', {
-        text: `Window opened: ${windowData.title}\nPosition: x=${Math.round(scatteredPosition.x)}, y=${Math.round(scatteredPosition.y)} (smart positioning + scatter)\nSize: ${windowData.width}x${windowData.height}\n\nAll windows:\n${windowPositions}\n\n`
-      });
+        eventBus.emit('system:output', {
+          text: `Window opened: ${windowData.title}\nPosition: x=${Math.round(scatteredPosition.x)}, y=${Math.round(scatteredPosition.y)} (smart positioning + scatter)\nSize: ${windowData.width}x${windowData.height}\n\nAll windows:\n${windowPositions}\n\n`
+        });
 
-      try {
-        eventBus.emit('window:opened', { id: windowData.id, type: 'ui', title: windowData.title });
-      } catch {}
+        try {
+          eventBus.emit('window:opened', { id: windowData.id, type: 'ui', title: windowData.title });
+        } catch {}
+      }, 0);
+
+      // Reset animation state after opening animation completes
+      setTimeout(() => {
+        setState(currentState => ({
+          ...currentState,
+          windows: currentState.windows.map(w =>
+            w.id === windowData.id
+              ? { ...w, animationState: 'none' as const }
+              : w
+          )
+        }));
+      }, 80);
 
       return newState;
     });
   };
 
   const closeWindow = (windowId: string) => {
+    // First set the closing animation state
     setState(prev => ({
       ...prev,
-      windows: prev.windows.filter(w => w.id !== windowId),
-      activeWindowId: prev.activeWindowId === windowId ? null : prev.activeWindowId
+      windows: prev.windows.map(w =>
+        w.id === windowId
+          ? { ...w, animationState: 'closing' as const }
+          : w
+      )
     }));
-    try {
-      eventBus.emit('window:closed', { windowId });
-    } catch {}
+
+    // After animation completes, remove the window
+    setTimeout(() => {
+      setState(prev => ({
+        ...prev,
+        windows: prev.windows.filter(w => w.id !== windowId),
+        activeWindowId: prev.activeWindowId === windowId ? null : prev.activeWindowId
+      }));
+
+      // Emit event after window is removed
+      setTimeout(() => {
+        try {
+          eventBus.emit('window:closed', { windowId });
+        } catch {}
+      }, 0);
+    }, 250); // Match the closing animation duration
   };
 
   const minimizeWindow = (windowId: string) => {
@@ -266,9 +299,13 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
       ),
       nextZIndex: prev.nextZIndex + 1
     }));
-    try {
-      eventBus.emit('window:focused', { windowId });
-    } catch {}
+
+    // Emit event after state update completes
+    setTimeout(() => {
+      try {
+        eventBus.emit('window:focused', { windowId });
+      } catch {}
+    }, 0);
   };
 
   const updateWindowPosition = (windowId: string, x: number, y: number) => {
@@ -359,6 +396,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
               onClose={() => closeWindow(window.id)}
               onFocus={() => focusWindow(window.id)}
               imageUrl={imageUrl}
+              animationState={window.animationState}
             >
               <WindowComponent />
             </ImageWindow>
@@ -377,12 +415,14 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
             isActive={state.activeWindowId === window.id}
             isMinimized={window.isMinimized}
             isFullscreen={window.isFullscreen}
+            zIndex={window.zIndex}
             onClose={() => closeWindow(window.id)}
             onMinimize={() => minimizeWindow(window.id)}
             onRestore={() => restoreWindow(window.id)}
             onFullscreen={() => toggleFullscreen(window.id)}
             onFocus={() => focusWindow(window.id)}
             onPositionChange={updateWindowPosition}
+            animationState={window.animationState}
           >
             <WindowComponent />
           </Window>
