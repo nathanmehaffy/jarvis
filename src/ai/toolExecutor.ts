@@ -131,6 +131,15 @@ export class ToolExecutor {
           const closeData = { windowId: w.id, timestamp: Date.now() };
           eventBus.emit('ui:close_window', closeData);
           eventBus.emit('window:closed', closeData);
+          
+          // Forward to worker if needed
+          try {
+            if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
+              (self as any).postMessage({ type: 'UI_CLOSE_WINDOW', data: closeData });
+            }
+          } catch (_) {
+            // no-op
+          }
         });
         console.log(`[ToolExecutor] Closing all windows (${all.length})`);
         return {
