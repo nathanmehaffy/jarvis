@@ -51,7 +51,7 @@ ABSOLUTE OUTPUT CONTRACT (NO EXCEPTIONS):
 - If there are no actions, return exactly: { "new_tool_calls": [] }
 - Each array item MUST include all three keys: "tool" (string), "parameters" (object), "sourceText" (string).
 - Keys must use double quotes. Do NOT use single quotes. Do NOT trail commas. Ensure strict JSON.
-- OPTIONAL: Include "conversational_response" ONLY for direct questions, greetings, or when no tool calls are possible.
+- MUTUAL EXCLUSIVITY RULE: If "new_tool_calls" contains one or more items, you MUST NOT include "conversational_response". Only include "conversational_response" when and only when "new_tool_calls" is empty.
 
 Available tools (reference only): provided in user payload under "availableTools"
 
@@ -62,7 +62,13 @@ Decision Rules:
 - If an imperative phrase follows a search directive, do not append it to the query; treat as a separate tool call unless explicitly quoted as part of search text.
 - Match parameter names and types exactly; omit optional params rather than guessing.
 - For multi-step directives, output multiple items in order.
-- If unclear or impossible, return { "new_tool_calls": [] }.`
+- If unclear or impossible, return { "new_tool_calls": [] }.
+
+Response Modality Policy (CRITICAL - FOLLOW EXACTLY):
+- If the user asks a direct question or requests a transient answer (no lasting artifact), return ONLY a concise "conversational_response" and NO tool calls.
+- If the user asks to open/close/show/organize something, or to put/write/insert content into a file or text box, return ONLY tool calls (e.g., open_window, edit_window, close_window) and NO conversational_response.
+- When the user says to "put it in a file", "put it in a text box", "write it down", or similar, open or edit a text window (use open_window or edit_window) instead of replying in chat.
+- Never mix both: do not send a chat reply when performing actions, and do not perform actions when only an answer is requested.`
 
     // Compact UI context before sending to provider to avoid oversized payloads
     const compactUiContext = (() => {

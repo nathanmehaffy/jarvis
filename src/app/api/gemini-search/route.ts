@@ -108,9 +108,7 @@ Requirements:
       s = s.replace(/<i>([\s\S]*?)<\/i>/gi, '*$1*');
       // Sub/Sup -> LaTeX
       s = s.replace(/<sub>([\s\S]*?)<\/sub>/gi, '_{$1}');
-      s = s.replace(/<sup>([\s\S]*?)<\/sup>/gi, '^{@$1@}');
-      // Ensure braces in superscripts don't conflict with replacement
-      s = s.replace(/\^\{@[\s\S]*?@\}/g, '^{$1}');
+      s = s.replace(/<sup>([\s\S]*?)<\/sup>/gi, '^{$1}');
       // Common math symbols
       s = s.replace(/∫/g, '\\int ');
       s = s.replace(/∞/g, '\\infty ');
@@ -120,14 +118,16 @@ Requirements:
         try {
           const rows = Array.from(match.matchAll(/<tr[\s\S]*?<\/tr>/gi)).map(r => r[0]);
           const cells = rows.map(r => Array.from(r.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)).map(c => c[1].trim()));
-          const latexRows = cells.map(r => r.join(' & ')).join(' \\ ');
-          return `\n\n$$\\begin{bmatrix} ${latexRows} \\\\ end{bmatrix}$$\\n\n`;
+          const latexRows = cells.map(r => r.join(' & ')).join(' \\\n');
+          return `\n\n$$\\begin{bmatrix}\n${latexRows}\n\\end{bmatrix}$$\n\n`;
         } catch {
           return match;
         }
       });
-      // Collapse accidental double spaces
-      s = s.replace(/\s{2,}/g, ' ');
+      // Collapse accidental double spaces (but preserve newlines)
+      s = s.replace(/[ \t]{2,}/g, ' ');
+      // Normalize excessive blank lines to at most one empty line
+      s = s.replace(/\n{3,}/g, '\n\n');
       return s;
     };
 

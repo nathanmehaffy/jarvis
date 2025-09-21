@@ -226,8 +226,8 @@ async function processTextCommand(data: any) {
       data: responseData
     });
 
-    // If there's a conversational response, emit it separately for notifications
-    if (conversationalResponse && conversationalResponse.trim()) {
+    // If there are NO tool calls and there's a conversational response, emit it
+    if ((newCalls.length === 0) && conversationalResponse && conversationalResponse.trim()) {
       console.log('💬 [AI Worker] Sending conversational response', {
         response: conversationalResponse,
         timestamp: new Date().toISOString()

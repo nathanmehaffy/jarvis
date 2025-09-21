@@ -163,12 +163,16 @@ export function useSpeechTranscription(
     if (!isSupported) return false;
 
     shouldRestart.current = true;
+    // Avoid redundant start calls; if already listening, return true
+    if (speechService.getIsListening()) return true;
     return speechService.start();
   }, [isSupported]);
 
   const stop = useCallback((): void => {
     shouldRestart.current = false;
-    speechService.stop();
+    if (speechService.getIsListening()) {
+      speechService.stop();
+    }
     setInterimTranscript('');
   }, []);
 

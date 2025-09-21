@@ -35,6 +35,8 @@ export class SpeechTranscriptionService {
   private isListening = false;
   private isSupported = false;
   private isInitialized = false;
+  private isStarting = false;
+  private isStopping = false;
   private lastFinalCumulative = '';
   private micPrefetched = false;
   private audioRecoverAttempted = false;
@@ -118,6 +120,7 @@ export class SpeechTranscriptionService {
 
     this.recognition.onstart = () => {
       this.isListening = true;
+      this.isStarting = false;
       // Reset cumulative tracker at the start of each session
       this.lastFinalCumulative = '';
       eventBus.emit('speech:started');
@@ -126,6 +129,8 @@ export class SpeechTranscriptionService {
     this.recognition.onend = () => {
       // Mark as not listening; restart is coordinated by the hook
       this.isListening = false;
+      this.isStarting = false;
+      this.isStopping = false;
       eventBus.emit('speech:ended');
     };
 
@@ -183,6 +188,8 @@ export class SpeechTranscriptionService {
 
     this.recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.warn('Speech recognition error:', event.error);
+      this.isStarting = false;
+      this.isStopping = false;
 
       // Don't emit error for no-speech since we want continuous listening through silence
       if (event.error !== 'no-speech') {
@@ -220,17 +227,19 @@ export class SpeechTranscriptionService {
       // Handle fatal errors by stopping completely
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         this.isListening = false;
+        this.isStarting = false;
         return;
       }
     };
   }
 
   start(): boolean {
-    if (!this.recognition || this.isListening) {
+    if (!this.recognition || this.isListening || this.isStarting || this.isStopping) {
       return false;
     }
 
     try {
+      this.isStarting = true;
       // proactively request mic once if not already
       void this.prefetchMicAccess();
       this.recognition.start();
@@ -238,6 +247,7 @@ export class SpeechTranscriptionService {
     } catch (error) {
       console.error('Failed to start speech recognition:', error);
       eventBus.emit('speech:error', error);
+      this.isStarting = false;
       return false;
     }
   }
@@ -248,6 +258,8 @@ export class SpeechTranscriptionService {
     }
 
     this.isListening = false;
+    this.isStarting = false;
+    this.isStopping = true;
     this.recognition.stop();
   }
 
@@ -257,6 +269,8 @@ export class SpeechTranscriptionService {
     }
 
     this.isListening = false;
+    this.isStarting = false;
+    this.isStopping = true;
     this.recognition.abort();
   }
 

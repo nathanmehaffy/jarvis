@@ -87,6 +87,7 @@ export function MainUI() {
   const [isDesktopMinimized, setIsDesktopMinimized] = useState(false);
   const [showDebugSidebar, ] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [pushToTalk, setPushToTalk] = useState(false);
   // Category Organizer state
   const [isCategoryOrganizerOpen, setIsCategoryOrganizerOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -1066,7 +1067,7 @@ function sayHello() {
         onWindowClick={isAssignmentMode && selectedCategoryForAssignment ? assignWindowToSelectedCategory : undefined}
       >
         <AnimatedBackground />
-        <VoiceTaskListener />
+        <VoiceTaskListener pushToTalk={pushToTalk} />
         
         {showDebugSidebar && (
           <DebugSidebar
@@ -1668,6 +1669,21 @@ function sayHello() {
 
       {/* Bottom Chat System */}
       <BottomChatNotifications />
+
+      {/* Push-to-Talk toggle - bottom-left */}
+      <div className="fixed bottom-4 left-4 z-50">
+        <button
+          onClick={(e) => { e.stopPropagation(); setPushToTalk(prev => !prev); }}
+          className={`px-4 py-2 rounded-xl border-2 backdrop-blur-xl shadow-2xl transition-colors ${
+            pushToTalk
+              ? 'bg-emerald-600/30 border-emerald-400/60 text-emerald-100 hover:bg-emerald-600/40'
+              : 'bg-gray-700/40 border-gray-500/60 text-gray-200 hover:bg-gray-700/60'
+          }`}
+          title={pushToTalk ? 'Push-to-Talk enabled (Hold Space to speak)' : 'Push-to-Talk disabled (Always listening)'}
+        >
+          {pushToTalk ? '🎤 Push-to-Talk: ON (hold Space)' : '🎙️ Always Listening: ON'}
+        </button>
+      </div>
     </div>
   );
 }

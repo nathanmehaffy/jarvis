@@ -7,7 +7,7 @@ import { useSpeechTranscription } from './useSpeechTranscription';
 
 type Status = 'idle' | 'listening' | 'processing' | 'error';
 
-export function VoiceTaskListener() {
+export function VoiceTaskListener({ pushToTalk = false }: { pushToTalk?: boolean }) {
   const [buffer, setBuffer] = useState('');
   const [, setStatus] = useState<Status>('idle');
   const [lastError, setLastError] = useState('');
@@ -27,6 +27,7 @@ export function VoiceTaskListener() {
   const lastStreamCallAtRef = useRef<number>(0);
   const lastStreamProcessedTextRef = useRef<string>('');
   const lastEmittedFullTextRef = useRef<string>('');
+  const attemptProcessingRef = useRef<((mode?: 'final' | 'stream') => void) | null>(null);
 
   // No AI calls here; VoiceTaskListener is now a pure input buffer
 
@@ -48,13 +49,13 @@ export function VoiceTaskListener() {
     scheduledTimeoutRef.current = window.setTimeout(() => {
       scheduledTimeoutRef.current = null;
       scheduledForRef.current = null;
-      attemptProcessing('final');
+      attemptProcessingRef.current?.('final');
     }, delayMs);
   }, []);
 
-  const { isListening, isSupported } = useSpeechTranscription({
-    autoStart: true,
-    continuous: true,
+  const { isListening, isSupported, start, stop, clear } = useSpeechTranscription({
+    autoStart: !pushToTalk,
+    continuous: !pushToTalk,
     onTranscript: (data) => {
       if (data?.fullText) {
         latestFullTextRef.current = data.fullText.trim();
@@ -65,8 +66,10 @@ export function VoiceTaskListener() {
         bufferRef.current = newBuffer;
         setBuffer(newBuffer);
         lastBufferAppendAtRef.current = Date.now();
-        // Coalesce multiple final segments by waiting briefly for silence
-        scheduleTimer(SILENCE_CONFIRM_MS);
+        // In continuous mode, coalesce with a short silence timer; in PTT, defer to spacebar release
+        if (!pushToTalk) {
+          scheduleTimer(SILENCE_CONFIRM_MS);
+        }
       } else if (data.interim && data.interim.trim()) {
         // Update activity timestamp to indicate user is still speaking
         lastBufferAppendAtRef.current = Date.now();
@@ -82,6 +85,80 @@ export function VoiceTaskListener() {
       }
     }
   });
+
+  // Ensure recorder state matches mode immediately on toggle
+  useEffect(() => {
+    if (!isSupported) return;
+    if (pushToTalk) {
+      // Turn off continuous listening when entering PTT mode
+      stop();
+    } else {
+      // Resume always-on listening when exiting PTT mode if not already
+      if (!isListening) {
+        start();
+      }
+    }
+  }, [pushToTalk, isSupported, isListening, start, stop]);
+
+  // Push-to-Talk: handle Spacebar hold to temporarily start recording and submit on release
+  useEffect(() => {
+    if (!pushToTalk) return;
+
+    let pttActive = false;
+    let pressedAt = 0;
+
+    const isEditableTarget = (el: EventTarget | null): boolean => {
+      const t = el as HTMLElement | null;
+      if (!t) return false;
+      const tag = t.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return true;
+      // contentEditable elements
+      const ce = (t as HTMLElement).getAttribute?.('contenteditable');
+      return ce === '' || ce === 'true';
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return;
+      if (isEditableTarget(e.target)) return; // don't hijack typing in inputs
+      if (pttActive) return; // ignore repeats while held
+      pttActive = true;
+      pressedAt = Date.now();
+      e.preventDefault();
+      // start recording immediately
+      if (!isListening) {
+        start();
+      }
+      // cancel any pending silence timers
+      if (scheduledTimeoutRef.current !== null) {
+        clearTimeout(scheduledTimeoutRef.current);
+        scheduledTimeoutRef.current = null;
+        scheduledForRef.current = null;
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return;
+      if (!pttActive) return;
+      pttActive = false;
+      e.preventDefault();
+      // stop recording and immediately submit current buffer (debounce very short presses)
+      const heldMs = Date.now() - pressedAt;
+      if (isListening) {
+        stop();
+      }
+      // process immediately with whatever we captured
+      attemptProcessingRef.current?.('final');
+      // Optionally clear interim buffer to avoid accumulation across presses
+      // Full text history still maintained in lastEmittedFullTextRef
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [pushToTalk, start, stop]);
 
   // Compute and emit debug info whenever core state changes
   useEffect(() => {
@@ -102,7 +179,7 @@ export function VoiceTaskListener() {
     if (processingRef.current) return;
     if (!bufferRef.current) return;
 
-    attemptProcessing('final');
+    attemptProcessingRef.current?.('final');
   }, [isOnline, isSupported]);
 
   // Online/offline monitoring
@@ -156,7 +233,7 @@ export function VoiceTaskListener() {
     }
     streamTimerRef.current = window.setTimeout(() => {
       streamTimerRef.current = null;
-      if (ENABLE_STREAMING) attemptProcessing('stream');
+      if (ENABLE_STREAMING) attemptProcessingRef.current?.('stream');
     }, waitMs);
   }, [isOnline, isSupported]);
 
@@ -269,6 +346,11 @@ export function VoiceTaskListener() {
 
     processNow(mode);
   }, [isOnline, isSupported, processNow]);
+
+  // Keep ref in sync to avoid use-before-define in timers/handlers
+  useEffect(() => {
+    attemptProcessingRef.current = attemptProcessing;
+  }, [attemptProcessing]);
 
   // Render nothing; this component orchestrates voice -> tasks
   return null;

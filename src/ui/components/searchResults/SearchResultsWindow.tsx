@@ -47,9 +47,12 @@ export function SearchResultsWindow({ content }: { content: string }) {
             h3: ({ children }) => (
               <h3 className="text-base font-medium text-white mb-2 mt-3">{children}</h3>
             ),
-            p: ({ children }) => (
-              <p className="text-gray-200 mb-3 leading-relaxed">{children}</p>
-            ),
+            // Ensure paragraphs break properly and avoid merged header styling
+            p: ({ children }) => {
+              return (
+                <p className="text-gray-200 mb-3 leading-relaxed whitespace-pre-wrap break-words">{children}</p>
+              );
+            },
             ul: ({ children }) => (
               <ul className="text-gray-200 mb-3 ml-4 space-y-1">{children}</ul>
             ),
@@ -57,7 +60,7 @@ export function SearchResultsWindow({ content }: { content: string }) {
               <ol className="text-gray-200 mb-3 ml-4 space-y-1">{children}</ol>
             ),
             li: ({ children }) => (
-              <li className="text-gray-200 leading-relaxed">{children}</li>
+              <li className="text-gray-200 leading-relaxed whitespace-pre-wrap break-words">{children}</li>
             ),
             strong: ({ children }) => (
               <strong className="text-white font-semibold">{children}</strong>
@@ -100,7 +103,7 @@ export function SearchResultsWindow({ content }: { content: string }) {
             a: ({ children, href }) => (
               <a
                 href={href}
-                className="text-blue-400 hover:text-blue-300 underline"
+                className="text-blue-400 hover:text-blue-300 underline break-all"
                 target="_blank"
                 rel="noopener noreferrer"
               >
