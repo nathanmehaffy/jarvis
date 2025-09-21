@@ -239,9 +239,11 @@ async function processTextCommand(data: any) {
     
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error('❌ [AI Worker] processTextCommand FAILED', {
-      error: errorMsg,
-      errorStack: error instanceof Error ? error.stack : undefined,
+    console.error('❌ [AI Worker] processTextCommand FAILED', error);
+    console.error('❌ [AI Worker] Error details:', {
+      message: errorMsg,
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : 'Unknown',
       data: data,
       timestamp: new Date().toISOString()
     });
