@@ -5,15 +5,8 @@ import { eventBus } from '@/lib/eventBus';
 import { SystemOutputState, SystemOutputProps } from './systemOutput.types';
 import { MarkdownText } from '../markdownText';
 
-export function SystemOutput({
-  placeholder = 'System messages will appear here...',
-  content
-}: SystemOutputProps & { content?: string }) {
-  const [notes, setNotes] = useState<SystemOutputState>({
-    content: '',
-    lastModified: new Date()
-  });
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+export function SystemOutput() {
+  const [notes, setNotes] = useState<string[]>([]);
 
   useEffect(() => {
     const unsubscribers = [
@@ -49,12 +42,7 @@ export function SystemOutput({
     }));
   };
 
-  const clearNotes = () => {
-    setNotes({
-      content: '',
-      lastModified: new Date()
-    });
-  };
+
 
   return (
     <div className="h-full flex flex-col">

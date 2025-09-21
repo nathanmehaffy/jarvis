@@ -18,10 +18,13 @@ export interface WindowData {
   animationState?: 'opening' | 'closing' | 'none';
   keywords?: string[];
   contentHash?: string;
+  group?: string;
+  groupColor?: string;
 }
 
 export interface WindowManagerState {
   windows: WindowData[];
   activeWindowId: string | null;
   nextZIndex: number;
+  collapsedCategories?: string[];
 }

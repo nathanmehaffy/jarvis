@@ -106,3 +106,64 @@ export interface AIProcessingResult {
   error?: string;
   timestamp: number;
 }
+
+export interface WebSearchParams {
+  query: string;
+  resultCount?: number;
+  displayMode?: 'auto' | 'full' | 'summary' | 'links';
+}
+
+export interface CreateGroupParams {
+  name: string;
+  color?: string;
+}
+
+export interface AssignGroupParams {
+  groupName: string;
+  windowId?: string;
+  selector?: 'newest' | 'latest' | 'active' | 'all';
+}
+
+export interface CollapseGroupParams {
+  groupName: string;
+}
+
+export interface ExpandGroupParams {
+  groupName: string;
+}
+
+export interface SummarizeArticleParams {
+  url: string;
+  maxBullets?: number;
+}
+
+export interface AnalyzeImageParams {
+  imageBase64?: string;
+  imageUrl?: string;
+  prompt?: string;
+}
+
+export interface AnalyzePdfParams {
+  pdfBase64?: string;
+  pdfUrl?: string;
+  prompt?: string;
+}
+
+export interface CreateTaskParams {
+  title: string;
+  due?: string;
+  notes?: string;
+}
+
+export interface ViewTasksParams {
+  filter?: 'all' | 'open' | 'done';
+}
+
+export interface SetReminderParams {
+  message: string;
+  time: string; // natural language or absolute time
+}
+
+export interface WeatherParams { location: string; }
+export interface NewsParams { query: string; pageSize?: number; }
+export interface StocksParams { symbol: string; }

@@ -96,6 +96,33 @@ export const AVAILABLE_TOOLS: Tool[] = [
     }
   },
   {
+    name: 'show_integral_visual',
+    description: 'Open a graph window visualizing a single-variable integral with LaTeX header.',
+    parameters: {
+      type: 'object',
+      properties: {
+        expression: { type: 'string', description: 'Expression in variable, e.g., sin(x) + x^2' },
+        variable: { type: 'string', description: 'Variable name, default x' },
+        lower: { type: 'number', description: 'Lower bound a' },
+        upper: { type: 'number', description: 'Upper bound b' },
+        samples: { type: 'number', description: 'Sampling count (default 200)' },
+        title: { type: 'string', description: 'Optional window title' }
+      },
+      required: ['expression', 'lower', 'upper']
+    }
+  },
+  {
+    name: 'start_adaptive_quiz',
+    description: 'Start an adaptive quiz window by topic (e.g., addition). The quiz listens to voice answers and adjusts difficulty.',
+    parameters: {
+      type: 'object',
+      properties: {
+        topic: { type: 'string', description: 'Quiz topic, e.g., addition' }
+      },
+      required: ['topic']
+    }
+  },
+  {
     name: 'search',
     description: 'Performs a web-grounded search using AI and displays results in a new window. Use for queries like "search for [topic]" or "find information about [subject]".',
     parameters: {
@@ -185,6 +212,53 @@ export const AVAILABLE_TOOLS: Tool[] = [
         time: { type: 'string', description: 'When to send the reminder, in natural language (e.g., "in 10 minutes", "at 3:30pm")' }
       },
       required: ['message', 'time']
+    }
+  },
+  {
+    name: 'create_group',
+    description: 'Create a new category/group by name. Use when the user says “create/make a category/group <name>”.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Category/group name' },
+        color: { type: 'string', description: 'Optional hex color like #3B82F6' }
+      },
+      required: ['name']
+    }
+  },
+  {
+    name: 'assign_group',
+    description: 'Assign a window to a category/group. Use when the user says “assign this/window <id>/<title> to <group>”.',
+    parameters: {
+      type: 'object',
+      properties: {
+        groupName: { type: 'string', description: 'Target category/group name' },
+        windowId: { type: 'string', description: 'Optional explicit window id' },
+        selector: { type: 'string', description: 'Selector when no id provided (newest/latest/active/all)' }
+      },
+      required: ['groupName']
+    }
+  },
+  {
+    name: 'collapse_group',
+    description: 'Collapse a category/group into a single summary window.',
+    parameters: {
+      type: 'object',
+      properties: {
+        groupName: { type: 'string', description: 'Category/group to collapse' }
+      },
+      required: ['groupName']
+    }
+  },
+  {
+    name: 'expand_group',
+    description: 'Expand a previously-collapsed category/group, restoring its windows.',
+    parameters: {
+      type: 'object',
+      properties: {
+        groupName: { type: 'string', description: 'Category/group to expand' }
+      },
+      required: ['groupName']
     }
   }
 ];

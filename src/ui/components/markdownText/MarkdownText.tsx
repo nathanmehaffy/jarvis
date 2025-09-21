@@ -2,6 +2,9 @@
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import { SimpleMarkdownText } from './SimpleMarkdownText';
 
 interface MarkdownTextProps {
@@ -19,7 +22,8 @@ export function MarkdownText({ children, className = '' }: MarkdownTextProps) {
     return (
       <div className={`markdown-content ${className}`}>
         <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
+          remarkPlugins={[remarkMath, remarkGfm]}
+          rehypePlugins={[rehypeKatex]}
           components={{
         // Custom styling for markdown elements
         h1: ({ children }) => (

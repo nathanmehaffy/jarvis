@@ -1,20 +1,15 @@
-'use client';
-
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { eventBus } from '@/lib/eventBus';
+
+const MIN_DEBOUNCE_MS = 500; // 500ms
 import { useSpeechTranscription } from './useSpeechTranscription';
 // Cerebras calls removed; this component now only buffers transcript and emits updates
 
 type Status = 'idle' | 'listening' | 'processing' | 'error';
 
-interface CerebrasResult {
-  tasks?: string[];
-  remainder?: string;
-}
-
 export function VoiceTaskListener() {
   const [buffer, setBuffer] = useState('');
-  const [status, setStatus] = useState<Status>('idle');
+  const [, setStatus] = useState<Status>('idle');
   const [lastError, setLastError] = useState('');
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true
@@ -34,7 +29,6 @@ export function VoiceTaskListener() {
 
   // No AI calls here; VoiceTaskListener is now a pure input buffer
 
-  const MIN_DEBOUNCE_MS = 0; // retained for potential future use
   const STREAM_INTERVAL_MS = 2000; // periodic checks during continuous speech
   const STILL_SPEAKING_WINDOW_MS = 1500; // treat activity within this as still speaking
   const SILENCE_CONFIRM_MS = 1000; // wait after last final segment to coalesce phrases
@@ -42,6 +36,20 @@ export function VoiceTaskListener() {
 
 
   useEffect(() => { bufferRef.current = buffer; }, [buffer]);
+
+  const scheduleTimer = useCallback((delayMs: number) => {
+    if (scheduledTimeoutRef.current !== null) {
+      clearTimeout(scheduledTimeoutRef.current);
+      scheduledTimeoutRef.current = null;
+    }
+    const runAt = Date.now() + delayMs;
+    scheduledForRef.current = runAt;
+    scheduledTimeoutRef.current = window.setTimeout(() => {
+      scheduledTimeoutRef.current = null;
+      scheduledForRef.current = null;
+      attemptProcessing('final');
+    }, delayMs);
+  }, []);
 
   const { isListening, isSupported } = useSpeechTranscription({
     autoStart: true,
@@ -88,6 +96,14 @@ export function VoiceTaskListener() {
     });
   }, [buffer, lastError, isOnline, isListening, isSupported]);
 
+  const scheduleProcessing = useCallback(() => {
+    if (!isSupported || !isOnline) return;
+    if (processingRef.current) return;
+    if (!bufferRef.current) return;
+
+    attemptProcessing('final');
+  }, [isOnline, isSupported]);
+
   // Online/offline monitoring
   useEffect(() => {
     const handleOnline = () => {
@@ -106,7 +122,7 @@ export function VoiceTaskListener() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [scheduleProcessing]);
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -121,47 +137,6 @@ export function VoiceTaskListener() {
       }
     };
   }, []);
-
-  // Stop streaming when recognition stops
-  useEffect(() => {
-    if (!isListening && streamTimerRef.current !== null) {
-      clearTimeout(streamTimerRef.current);
-      streamTimerRef.current = null;
-    }
-  }, [isListening]);
-
-  // Track listening status for status display
-  useEffect(() => {
-    if (!isSupported) {
-      setStatus('error');
-      setLastError('Speech recognition not supported');
-      return;
-    }
-    if (processingRef.current) return;
-    setStatus(isListening ? 'listening' : 'idle');
-  }, [isListening, isSupported]);
-
-  const scheduleTimer = useCallback((delayMs: number) => {
-    if (scheduledTimeoutRef.current !== null) {
-      clearTimeout(scheduledTimeoutRef.current);
-      scheduledTimeoutRef.current = null;
-    }
-    const runAt = Date.now() + delayMs;
-    scheduledForRef.current = runAt;
-    scheduledTimeoutRef.current = window.setTimeout(() => {
-      scheduledTimeoutRef.current = null;
-      scheduledForRef.current = null;
-      attemptProcessing('final');
-    }, delayMs);
-  }, []);
-
-  const scheduleProcessing = useCallback(() => {
-    if (!isSupported || !isOnline) return;
-    if (processingRef.current) return;
-    if (!bufferRef.current) return;
-
-    attemptProcessing('final');
-  }, [isOnline, isSupported]);
 
   const scheduleStreamProcessing = useCallback(() => {
     if (!isSupported || !isOnline) return;
@@ -182,24 +157,26 @@ export function VoiceTaskListener() {
       streamTimerRef.current = null;
       if (ENABLE_STREAMING) attemptProcessing('stream');
     }, waitMs);
-  }, []);
-
-  const attemptProcessing = useCallback((mode: 'final' | 'stream' = 'final') => {
-    if (!isSupported || !isOnline) return;
-    if (processingRef.current) return;
-
-    // Guard by mode
-    if (mode === 'final') {
-      if (!bufferRef.current) return;
-    } else if (mode === 'stream') {
-      const nowCheck = Date.now();
-      if (nowCheck - (lastBufferAppendAtRef.current || nowCheck) > STILL_SPEAKING_WINDOW_MS) return;
-      const hasText = (latestFullTextRef.current && latestFullTextRef.current.length > 0) || (bufferRef.current && bufferRef.current.length > 0);
-      if (!hasText) return;
-    }
-
-    processNow(mode);
   }, [isOnline, isSupported]);
+
+  // Stop streaming when recognition stops
+  useEffect(() => {
+    if (!isListening && streamTimerRef.current !== null) {
+      clearTimeout(streamTimerRef.current);
+      streamTimerRef.current = null;
+    }
+  }, [isListening]);
+
+  // Track listening status for status display
+  useEffect(() => {
+    if (!isSupported) {
+      setStatus('error');
+      setLastError('Speech recognition not supported');
+      return;
+    }
+    if (processingRef.current) return;
+    setStatus(isListening ? 'listening' : 'idle');
+  }, [isListening, isSupported]);
 
   const processNow = useCallback((mode: 'final' | 'stream' = 'final') => {
     const currentBuffer = bufferRef.current;
@@ -221,7 +198,6 @@ export function VoiceTaskListener() {
       }
       return i;
     };
-    let rawBase = '';
     if (mode === 'stream') {
       const full = latestFullTextRef.current || currentBuffer || '';
       // Use only the delta since the last stream call to avoid reprocessing old text
@@ -235,9 +211,9 @@ export function VoiceTaskListener() {
       }
       // If delta is tiny, still provide a small tail for context
       const tail = full.length > 400 ? full.slice(-400) : full;
-      rawBase = (delta && delta.trim().length > 0) ? delta : tail;
+      if ((delta && delta.trim().length > 0) ? delta : tail) {}
     } else {
-      rawBase = currentBuffer.length > MAX_PROMPT_CHARS ? currentBuffer.slice(-MAX_PROMPT_CHARS) : currentBuffer;
+      if (currentBuffer.length > MAX_PROMPT_CHARS ? currentBuffer.slice(-MAX_PROMPT_CHARS) : currentBuffer) {}
     }
 
     // No silence confirmation follow-up
@@ -260,6 +236,23 @@ export function VoiceTaskListener() {
       setStatus(isListening ? 'listening' : 'idle');
     }
   }, [isListening]);
+
+  const attemptProcessing = useCallback((mode: 'final' | 'stream' = 'final') => {
+    if (!isSupported || !isOnline) return;
+    if (processingRef.current) return;
+
+    // Guard by mode
+    if (mode === 'final') {
+      if (!bufferRef.current) return;
+    } else if (mode === 'stream') {
+      const nowCheck = Date.now();
+      if (nowCheck - (lastBufferAppendAtRef.current || nowCheck) > STILL_SPEAKING_WINDOW_MS) return;
+      const hasText = (latestFullTextRef.current && latestFullTextRef.current.length > 0) || (bufferRef.current && bufferRef.current.length > 0);
+      if (!hasText) return;
+    }
+
+    processNow(mode);
+  }, [isOnline, isSupported, processNow]);
 
   // Render nothing; this component orchestrates voice -> tasks
   return null;

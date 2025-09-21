@@ -9,14 +9,19 @@ export class TaskParser {
     this.cerebrasClient = new CerebrasClient();
   }
 
-  async parseTextToTasks(input: { transcript: string; actionHistory: Array<{ tool: string; parameters: any; sourceText: string }>; uiContext: any }): Promise<{ new_tool_calls: Array<{ tool: string; parameters: any; sourceText: string }> }> {
+  async parseTextToTasks(input: { transcript: string; actionHistory: Array<{ tool: string; parameters: any; sourceText: string }>; uiContext: any }): Promise<{ new_tool_calls: Array<{ tool: string; parameters: any; sourceText: string }>; conversational_response?: string }> {
     const fullTranscript = (input?.transcript || '').toString();
     const uiContext = input?.uiContext || {};
     const actionHistory = Array.isArray(input?.actionHistory) ? input.actionHistory : [];
 
+    // Extract the most recent user input (assuming it's at the end of the transcript)
+    const sentences = fullTranscript.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    const recentInput = sentences.length > 0 ? sentences[sentences.length - 1].trim() : fullTranscript;
+
     console.log('🔍 [TaskParser] parseTextToTasks STARTED', {
       fullTranscript: fullTranscript,
       transcriptLength: fullTranscript.length,
+      recentInput: recentInput,
       transcriptPreview: fullTranscript.slice(-120),
       uiWindows: Array.isArray(uiContext?.windows) ? uiContext.windows.length : 0,
       actionCount: actionHistory.length,
@@ -66,10 +71,11 @@ User: What's the weather? (No specific tool, fallback to search)
 Output: {"new_tool_calls":[{"tool":"search","parameters":{"query":"current weather"},"sourceText":"What's the weather?"}]}
 
 User: search for potato nutrition then create a note saying buy potatoes
-Output: {"new_tool_calls":[{"tool":"search","parameters":{"query":"potato nutrition"},"sourceText":"search for potato nutrition"},{"tool":"open_window","parameters":{"windowType":"sticky-note","context":{"content":"buy potatoes"}},"sourceText":"create a note saying buy potatoes"}]}`;
+Output: {"new_tool_calls":[{"tool":"search","parameters":{"query":"potato nutrition"},"sourceText":"search for potato nutrition"},{"tool":"open_window","parameters":{"windowType":"sticky-note","context":{"content":"buy potatoes"}},"sourceText":"create a note saying buy potatoes"}]}`
 
     const jsonPayload = {
       fullTranscript: fullTranscript,
+      recentInput: recentInput,
       actionHistory: actionHistory,
       uiContext: uiContext,
       availableTools: AVAILABLE_TOOLS
@@ -105,7 +111,7 @@ Output: {"new_tool_calls":[{"tool":"search","parameters":{"query":"potato nutrit
 
     const content: unknown = response?.choices?.[0]?.message?.content;
 
-    const coerce = (input: unknown): { new_tool_calls: Array<{ tool: string; parameters: any; sourceText: string }> } => {
+    const coerce = (input: unknown): { new_tool_calls: Array<{ tool: string; parameters: any; sourceText: string }>; conversational_response?: string } => {
       const empty = { new_tool_calls: [] as Array<{ tool: string; parameters: any; sourceText: string }> };
       try {
         const obj = typeof input === 'string' ? JSON.parse(input) : input;
@@ -116,13 +122,23 @@ Output: {"new_tool_calls":[{"tool":"search","parameters":{"query":"potato nutrit
           parameters: (typeof c?.parameters === 'object' && c?.parameters) ? c.parameters : (typeof c?.args === 'object' ? c.args : {}),
           sourceText: String(c?.sourceText || c?.source_text || '')
         })).filter((c: any) => c.tool && typeof c.parameters === 'object');
-        return { new_tool_calls: cleaned };
+
+        const result: { new_tool_calls: Array<{ tool: string; parameters: any; sourceText: string }>; conversational_response?: string } = { new_tool_calls: cleaned };
+
+        // Include conversational response if present
+        if (typeof (obj as any).conversational_response === 'string' && (obj as any).conversational_response.trim()) {
+          result.conversational_response = (obj as any).conversational_response.trim();
+        }
+
+        return result;
       } catch {
         return empty;
       }
     };
 
-    const llmCalls = coerce(content).new_tool_calls;
+    const llmResult = coerce(content);
+    const llmCalls = llmResult.new_tool_calls;
+    const conversationalResponse = llmResult.conversational_response;
 
     // Local fallbacks: detect common edit-window phrasing to avoid depending solely on LLM
     const localCalls: Array<{ tool: string; parameters: any; sourceText: string }> = [];
@@ -175,7 +191,32 @@ Output: {"new_tool_calls":[{"tool":"search","parameters":{"query":"potato nutrit
       }
     };
 
+    const detectLocalGroups = (text: string) => {
+      const lower = text.toLowerCase();
+      // create/make category/group <name>
+      let m = lower.match(/(?:create|make|add)\s+(?:a\s+)?(?:category|group)\s+([a-z0-9\-\s]+)/i);
+      if (m && m[1]) {
+        localCalls.push({ tool: 'create_group', parameters: { name: m[1].trim() }, sourceText: m[0] });
+      }
+      // assign (this|active) to <name>
+      m = lower.match(/assign\s+(?:this|window|active)?\s*(?:window)?\s*(?:to|into)\s+([a-z0-9\-\s]+)/i);
+      if (m && m[1]) {
+        localCalls.push({ tool: 'assign_group', parameters: { groupName: m[1].trim(), selector: 'active' }, sourceText: m[0] });
+      }
+      // collapse <name> group/category
+      m = lower.match(/collapse\s+(?:the\s+)?([a-z0-9\-\s]+)\s*(?:group|category)?/i);
+      if (m && m[1]) {
+        localCalls.push({ tool: 'collapse_group', parameters: { groupName: m[1].trim() }, sourceText: m[0] });
+      }
+      // expand <name> group/category
+      m = lower.match(/expand\s+(?:the\s+)?([a-z0-9\-\s]+)\s*(?:group|category)?/i);
+      if (m && m[1]) {
+        localCalls.push({ tool: 'expand_group', parameters: { groupName: m[1].trim() }, sourceText: m[0] });
+      }
+    };
+
     detectLocalEdits(fullTranscript);
+    detectLocalGroups(fullTranscript);
 
     // Deduplicate against actionHistory and llm calls
     const seenKeys = new Set<string>(
@@ -207,7 +248,10 @@ Output: {"new_tool_calls":[{"tool":"search","parameters":{"query":"potato nutrit
     });
 
     // Fallback parsing for search commands if no tool calls found
-    let finalResult = { new_tool_calls: merged };
+    let finalResult: { new_tool_calls: Array<{ tool: string; parameters: any; sourceText: string }>; conversational_response?: string } = {
+      new_tool_calls: merged,
+      conversational_response: conversationalResponse
+    };
     if (finalResult.new_tool_calls.length === 0) {
       console.log('🔍 [TaskParser] No tool calls from LLM or local parsing, trying fallback search parsing');
       const searchPatterns = [
@@ -226,7 +270,8 @@ Output: {"new_tool_calls":[{"tool":"search","parameters":{"query":"potato nutrit
               tool: 'search',
               parameters: { query },
               sourceText: match[0]
-            }]
+            }],
+            conversational_response: conversationalResponse
           };
           console.log('✅ [TaskParser] Found search command via fallback parsing:', {
             query: query,

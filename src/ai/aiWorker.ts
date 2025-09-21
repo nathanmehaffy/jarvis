@@ -27,7 +27,8 @@ const state: ConversationState = {
 
 function updateTranscriptHistory(newTranscript: string) {
   const combined = newTranscript || '';
-  state.transcriptHistory = combined.length > 500 ? combined.slice(-500) : combined;
+  // Keep more context but still limit to prevent excessive token usage
+  state.transcriptHistory = combined.length > 2000 ? combined.slice(-2000) : combined;
 }
 
 function appendActionRecord(record: ActionRecord) {
@@ -138,10 +139,13 @@ async function processTextCommand(data: any) {
     });
 
     const newCalls: Array<{ tool: string; parameters: any; sourceText: string }> = Array.isArray(parseResult?.new_tool_calls) ? parseResult.new_tool_calls : [];
+    const conversationalResponse: string | undefined = parseResult?.conversational_response;
 
-    console.log('🔧 [AI Worker] Tool calls extracted from parse result', {
+    console.log('🔧 [AI Worker] Tool calls and responses extracted from parse result', {
       newCallsCount: newCalls.length,
       newCalls: newCalls,
+      hasConversationalResponse: !!conversationalResponse,
+      conversationalResponse: conversationalResponse,
       timestamp: new Date().toISOString()
     });
 
@@ -201,7 +205,8 @@ async function processTextCommand(data: any) {
       tasks: newCalls,
       executionResults,
       processingTime: 0,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      conversationalResponse: conversationalResponse
     };
 
     console.log('🏁 [AI Worker] processTextCommand COMPLETED successfully', {
@@ -213,6 +218,24 @@ async function processTextCommand(data: any) {
       type: 'TEXT_COMMAND_PROCESSED',
       data: responseData
     });
+
+    // If there's a conversational response, emit it separately for notifications
+    if (conversationalResponse && conversationalResponse.trim()) {
+      console.log('💬 [AI Worker] Sending conversational response', {
+        response: conversationalResponse,
+        timestamp: new Date().toISOString()
+      });
+
+      self.postMessage({
+        type: 'AI_CONVERSATIONAL_RESPONSE',
+        data: {
+          id: generateId(),
+          response: conversationalResponse,
+          originalText: transcript,
+          timestamp: Date.now()
+        }
+      });
+    }
     
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);

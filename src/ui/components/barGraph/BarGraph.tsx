@@ -7,7 +7,6 @@ export function BarGraph({
   data,
   width = 600,
   height = 400,
-  title = 'Bar Graph',
   xAxisLabel = 'X Axis',
   yAxisLabel = 'Y Axis',
   barColor = '#3b82f6',
@@ -108,7 +107,7 @@ export function BarGraph({
         {point.label}
       </text>
     ));
-  }, [data, barWidth, chartHeight]);
+  }, [data, barWidth, chartHeight, scaleX]);
 
   const yAxisLabels = useMemo(() => {
     const labels = [];
@@ -132,7 +131,7 @@ export function BarGraph({
     }
 
     return labels;
-  }, [bounds, chartHeight]);
+  }, [bounds, chartHeight, scaleY]);
 
   const handleMouseMove = (event: React.MouseEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();

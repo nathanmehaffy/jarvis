@@ -3,27 +3,22 @@
 import { useCallback } from 'react';
 import { eventBus } from '@/lib/eventBus';
 
+import Image from 'next/image';
+
 interface ImageViewerProps {
   imageUrl: string;
-  imageName?: string;
-  windowId?: string;
+  imageName: string;
+  windowId: string;
 }
 
 export function ImageViewer({ imageUrl, imageName, windowId }: ImageViewerProps) {
-  const handleClose = useCallback(() => {
-    if (windowId) {
-      eventBus.emit('ui:close_window', { windowId });
-    }
-  }, [windowId]);
-
-
   return (
-    <div className="h-full w-full relative">
-      <img
+    <div className="w-full h-full bg-black flex items-center justify-center overflow-hidden">
+      <Image
         src={imageUrl}
-        alt={imageName || 'Uploaded image'}
-        className="w-full h-full object-fill"
-        draggable={false}
+        alt={imageName}
+        layout="fill"
+        objectFit="contain"
       />
     </div>
   );

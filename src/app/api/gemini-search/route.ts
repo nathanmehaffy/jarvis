@@ -18,29 +18,32 @@ export async function POST(request: NextRequest) {
 
     console.log('[API] Making Gemini API request', { query });
 
-    const prompt = `You are a search assistant for Jarvis. Given the user's query, generate a comprehensive but concise response using real-time search results. Structure output as markdown for readability.
+    const intent = (() => {
+      const q = (query as string).toLowerCase();
+      if (/example|practice|problem|problems|exercise|exercises|compute|evaluate|solve/.test(q)) return 'examples';
+      if (/what is|define|explain|overview|introduction/.test(q)) return 'explain';
+      return 'mixed';
+    })();
 
-Query: ${query}
+    const prompt = intent === 'examples'
+      ? `Return EXACTLY TWO worked examples in GitHub-Flavored Markdown with LaTeX.
+Topic: ${query}
 
-Rules:
-- Start with a direct answer.
-- Use bullet points for lists.
-- Cite sources with [1], [2], etc.
-- Keep response under 1000 words.
-- If query implies tools, suggest them but don't execute.
+Formatting rules (hard requirements):
+- Begin immediately with "## Example 1:" followed by the first problem; NO preface text
+- Then "## Example 2:"; NO concluding paragraphs
+- Use LaTeX for all math (inline $...$, display $$...$$)
+- Keep steps compact; include the final answer clearly
+- Use proper LaTeX for matrices (\\begin{bmatrix} ... \\end{bmatrix}) when needed
+`
+      : `Provide a concise explanation in GitHub-Flavored Markdown with LaTeX for: ${query}
 
-Example:
-Query: Best AI tools 2025
-Output: # Top AI Tools for 2025
-
-Based on current trends:
-
-- **Grok**: Advanced reasoning [1]
-- **Claude**: Creative writing [2]
-
-Sources:
-[1] x.ai
-[2] anthropic.com`;
+Requirements:
+- Use headings and bullet points where helpful
+- Use LaTeX for all equations (inline $...$, display $$...$$)
+- For matrices/vectors, use LaTeX environments (e.g., \\begin{bmatrix} ... \\end{bmatrix})
+- If user intent implies examples, include 1-2 short ones; otherwise focus on explanation
+`;
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`, {
       method: 'POST',
@@ -79,10 +82,61 @@ Sources:
       return new Response(JSON.stringify({ error: 'Invalid response format from Gemini API' }), { status: 502 });
     }
 
-    const text = data.candidates[0].content.parts?.[0]?.text;
+    let text = data.candidates[0].content.parts?.[0]?.text as string | undefined;
     if (!text) {
       console.error('[API] Empty response from Gemini API', { data });
       return new Response(JSON.stringify({ error: 'Empty response from Gemini API' }), { status: 502 });
+    }
+
+    // Post-process: convert common HTML tags to Markdown/LaTeX just in case
+    const toLatexMarkdown = (input: string): string => {
+      let s = input;
+      // Remove placeholder comments
+      s = s.replace(/<!--\s*Placeholder[^>]*-->/gi, '');
+      // Basic HTML -> Markdown
+      s = s.replace(/<strong>([\s\S]*?)<\/strong>/gi, '**$1**');
+      s = s.replace(/<b>([\s\S]*?)<\/b>/gi, '**$1**');
+      s = s.replace(/<em>([\s\S]*?)<\/em>/gi, '*$1*');
+      s = s.replace(/<i>([\s\S]*?)<\/i>/gi, '*$1*');
+      // Sub/Sup -> LaTeX
+      s = s.replace(/<sub>([\s\S]*?)<\/sub>/gi, '_{$1}');
+      s = s.replace(/<sup>([\s\S]*?)<\/sup>/gi, '^{@$1@}');
+      // Ensure braces in superscripts don't conflict with replacement
+      s = s.replace(/\^\{@[\s\S]*?@\}/g, '^{$1}');
+      // Common math symbols
+      s = s.replace(/∫/g, '\\int ');
+      s = s.replace(/∞/g, '\\infty ');
+      s = s.replace(/±/g, '\\pm ');
+      // Matrix HTML fallbacks to LaTeX bmatrix if present
+      s = s.replace(/<table[\s\S]*?<\/table>/gi, (match) => {
+        try {
+          const rows = Array.from(match.matchAll(/<tr[\s\S]*?<\/tr>/gi)).map(r => r[0]);
+          const cells = rows.map(r => Array.from(r.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)).map(c => c[1].trim()));
+          const latexRows = cells.map(r => r.join(' & ')).join(' \\ ');
+          return `\n\n$$\\begin{bmatrix} ${latexRows} \\\\ end{bmatrix}$$\\n\n`;
+        } catch {
+          return match;
+        }
+      });
+      // Collapse accidental double spaces
+      s = s.replace(/\s{2,}/g, ' ');
+      return s;
+    };
+
+    text = toLatexMarkdown(text);
+
+    // If examples were requested, strip any preface before the first Example 1 heading
+    if (intent === 'examples') {
+      const startIdx = text.search(/(^|\n)\s*(##\s*Example\s*1\b|\*\*Example\s*1\*\*|Example\s*1\s*:)/i);
+      if (startIdx > 0) {
+        text = text.slice(startIdx).trimStart();
+      }
+      // Ensure it does not end with extra meta commentary
+      // If there is text after Example 2 block separated by "---" or lines like "Notes:", drop it
+      const endIdx = text.search(/\n\s*#+\s*(References|Notes|Further Reading)\b/i);
+      if (endIdx > 0) {
+        text = text.slice(0, endIdx).trimEnd();
+      }
     }
 
     console.log('[API] /api/gemini-search success', { responseLength: text.length });

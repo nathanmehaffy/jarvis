@@ -26,6 +26,8 @@ export interface WindowProps {
   headerStyle?: 'standard' | 'minimal';
   resizable?: boolean;
   animationState?: 'opening' | 'closing' | 'none';
+  group?: string;
+  groupColor?: string;
 }
 
 export interface WindowState {

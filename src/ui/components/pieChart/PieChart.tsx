@@ -1,23 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { DataPoint, PieChartProps, PieSlice } from './pieChart.types';
+import { PieChartProps } from './pieChart.types';
 
 export function PieChart({
-  data,
-  width = 500,
-  height = 400,
-  title = 'Pie Chart',
-  radius = 120,
-  innerRadius = 0,
-  colors = [
-    '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
-    '#06b6d4', '#84cc16', '#f97316', '#ec4899', '#6366f1'
-  ],
-  showLabels = true,
-  showPercentages = true,
-  showLegend = true,
-  animationDuration = 300
 }: PieChartProps) {
   const [hoveredSlice, setHoveredSlice] = useState<PieSlice | null>(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
