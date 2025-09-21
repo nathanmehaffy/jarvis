@@ -250,13 +250,26 @@ export class ToolExecutor {
     if (!targetWindowId && params.titleMatch) {
       const windows: Array<{ id: string; title: string }>
         = Array.isArray(uiContext?.windows) ? uiContext.windows : [];
-      const matchLower = String(params.titleMatch).toLowerCase();
-      const found = windows.find(w => String(w.title || '').toLowerCase() === matchLower);
+      const normalize = (s: string) => s.trim().toLowerCase().replace(/^['"]|['"]$/g, '');
+      const stripWindowPrefix = (s: string) => s.startsWith('window ') ? s.slice('window '.length) : s;
+      const target = stripWindowPrefix(normalize(String(params.titleMatch)));
+      const found = windows.find(w => {
+        const wt = stripWindowPrefix(normalize(String(w.title || '')));
+        return wt === target || wt.includes(target) || target.includes(wt);
+      });
       targetWindowId = found?.id;
     }
 
+    // If neither provided, default to active window from uiContext
     if (!targetWindowId && !params.titleMatch) {
-      throw new Error('edit_window requires windowId or titleMatch');
+      const activeId = typeof uiContext?.activeWindowId === 'string' ? uiContext.activeWindowId : undefined;
+      if (activeId) {
+        targetWindowId = activeId;
+      }
+    }
+
+    if (!targetWindowId && !params.titleMatch) {
+      throw new Error('No target window found to edit');
     }
 
     // Emit UI update
@@ -280,7 +293,7 @@ export class ToolExecutor {
     const result = {
       taskId: task.id,
       success: true,
-      result: { updated: true, targetWindowId, viaTitle: !targetWindowId && !!params.titleMatch },
+      result: { updated: true, targetWindowId: targetWindowId || null, viaTitle: !targetWindowId && !!params.titleMatch },
       timestamp: Date.now()
     };
     eventBus.emit('ai:tool_call_completed', { task, tool: 'edit_window', result });

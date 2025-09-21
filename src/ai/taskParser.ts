@@ -81,7 +81,81 @@ export class TaskParser {
       }
     };
 
-    return coerce(content);
+    const llmCalls = coerce(content).new_tool_calls;
+
+    // Local fallbacks: detect common edit-window phrasing to avoid depending solely on LLM
+    const localCalls: Array<{ tool: string; parameters: any; sourceText: string }> = [];
+
+    const detectLocalEdits = (text: string) => {
+      const t = text.toLowerCase();
+      const raw = text;
+
+      const pushCall = (params: any, source: string) => {
+        localCalls.push({ tool: 'edit_window', parameters: params, sourceText: source });
+      };
+
+      // 1) edit window "Title" to say ... / to ...
+      const reQuoted = /edit\s+(?:the\s+)?window\s+"([^"]+)"\s+(?:to\s+(?:say\s+)?)((?:.|\n|\r)+)$/i;
+      const mQuoted = raw.match(reQuoted);
+      if (mQuoted) {
+        const [, title, newText] = mQuoted;
+        const contentText = newText.trim();
+        if (contentText) pushCall({ titleMatch: title, newContent: contentText }, mQuoted[0]);
+      }
+
+      // 2) edit the window about X to say ... / to ...
+      const reAbout = /edit\s+(?:the\s+)?window\s+about\s+([a-z0-9\-\s]+?)\s+(?:to\s+(?:say\s+)?)((?:.|\n|\r)+)$/i;
+      const mAbout = raw.match(reAbout);
+      if (mAbout) {
+        const [, about, newText] = mAbout;
+        const contentText = newText.trim();
+        if (contentText) pushCall({ titleMatch: `window ${about.trim()}` }, mAbout[0]);
+        if (contentText) {
+          // include newContent
+          localCalls[localCalls.length - 1].parameters.newContent = contentText;
+        }
+      }
+
+      // 3) change/edit window "Title" title to NewTitle
+      const reTitleQuoted = /(edit|change)\s+(?:the\s+)?window\s+"([^"]+)"\s+(?:title|name)\s+to\s+(.+)$/i;
+      const mTitleQ = raw.match(reTitleQuoted);
+      if (mTitleQ) {
+        const [, , title, newTitle] = mTitleQ;
+        const nt = newTitle.trim();
+        if (nt) pushCall({ titleMatch: title, newTitle: nt }, mTitleQ[0]);
+      }
+
+      // 4) change/edit the window about X title to NewTitle
+      const reTitleAbout = /(edit|change)\s+(?:the\s+)?window\s+about\s+([a-z0-9\-\s]+?)\s+(?:title|name)\s+to\s+(.+)$/i;
+      const mTitleA = raw.match(reTitleAbout);
+      if (mTitleA) {
+        const [, , about, newTitle] = mTitleA;
+        const nt = newTitle.trim();
+        if (nt) pushCall({ titleMatch: `window ${about.trim()}`, newTitle: nt }, mTitleA[0]);
+      }
+    };
+
+    detectLocalEdits(fullTranscript);
+
+    // Deduplicate against actionHistory and llm calls
+    const seenKeys = new Set<string>(
+      (Array.isArray(actionHistory) ? actionHistory : []).map(a => {
+        try { return `${a.tool}:${JSON.stringify(a.parameters || {})}`; } catch { return `${a.tool}:x`; }
+      })
+    );
+
+    const merge = (arr: Array<{ tool: string; parameters: any; sourceText: string }>) => arr.filter(c => {
+      try {
+        const key = `${c.tool}:${JSON.stringify(c.parameters || {})}`;
+        if (seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+      } catch { return true; }
+    });
+
+    const merged = [...merge(localCalls), ...merge(llmCalls)];
+
+    return { new_tool_calls: merged };
   }
 
   private generateTaskDescription(toolName: string, parameters: any): string {

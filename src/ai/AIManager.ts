@@ -20,10 +20,10 @@ export class AIManager {
   private uiContext: SerializableUIContext = {};
 
   // Only send data that can be structured-cloned to the worker
-  private getSerializableUIContext(): SerializableUIContext {
+  private getSerializableUIContext(): SerializableUIContext & { activeWindowId?: string } {
     try {
       const context = this.uiContext || {};
-      const serializable: SerializableUIContext = {};
+      const serializable: SerializableUIContext & { activeWindowId?: string } = {};
 
       if (Array.isArray(context.windows)) {
         const cleaned: SerializableWindow[] = context.windows
@@ -41,6 +41,12 @@ export class AIManager {
             zIndex: typeof w.zIndex === 'number' ? w.zIndex : undefined
           }));
         serializable.windows = cleaned;
+      }
+
+      // Derive active window heuristically by highest zIndex
+      if (serializable.windows && serializable.windows.length > 0) {
+        const active = [...serializable.windows].sort((a, b) => (b.zIndex ?? 0) - (a.zIndex ?? 0))[0];
+        serializable.activeWindowId = active?.id;
       }
 
       return serializable;
@@ -69,6 +75,10 @@ export class AIManager {
         }
         if (type === 'UI_CLOSE_WINDOW') {
           eventBus.emit('ui:close_window', data);
+          return;
+        }
+        if (type === 'UI_UPDATE_WINDOW') {
+          eventBus.emit('ui:update_window', data);
           return;
         }
         if (type === 'UI_ORGANIZE_WINDOWS') {
