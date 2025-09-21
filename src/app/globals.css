@@ -102,3 +102,27 @@ body {
 .neon-glow-lime:hover {
   box-shadow: 0 0 12px rgba(163, 230, 53, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
+
+
+/* Bottom Chat Notification Animations */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fadeDown {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.95);
+  }
+}

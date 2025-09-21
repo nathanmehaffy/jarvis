@@ -394,6 +394,13 @@ export class ToolExecutor {
         results: searchResults,
         query
       });
+
+      // Emit notification for search completion
+      eventBus.emit('ai:response_notify', {
+        message: `🔍 Search completed: "${query}"`,
+        duration: 10000
+      });
+
       console.log('📢 [ToolExecutor] Emitted ai:search_complete event', {
         success: true,
         query: query,

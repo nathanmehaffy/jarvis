@@ -16,6 +16,7 @@ import { AnimatedBackground } from './components/background';
 import { ImageDropZone } from './components/imageDropZone';
 import { ImageViewer } from './components/imageViewer';
 import { DebugSidebar } from './components/debugSidebar';
+import { ChatWindow, BottomChatNotifications } from './components/chat';
 
 export function MainUI() {
   const windowManagerRef = useRef<WindowManagerRef>(null);
@@ -466,6 +467,21 @@ export function MainUI() {
     });
   };
 
+  const openChatWindow = () => {
+    windowManagerRef.current?.openWindow({
+      id: 'chat-window',
+      title: 'Chat with Jarvis',
+      component: ChatWindow,
+      isFullscreen: false,
+      isMinimized: false,
+      x: 0,
+      y: 0,
+      width: 450,
+      height: 600
+    });
+  };
+
+
   const openPreloadedImageWindow = () => {
     const preloadedImageUrl = 'https://picsum.photos/600/400?random=1';
     const imageName = 'Sample Image';
@@ -520,6 +536,54 @@ export function MainUI() {
 
 **Perfect aspect ratio preservation on all corners!** 🎉`
     });
+  };
+
+  const testNotificationSystem = () => {
+    // Test the single message notification system with longer durations
+    eventBus.emit('ai:response_notify', {
+      message: '🎉 First message - now stays up for 12 seconds! Much more time to read.',
+      duration: 4000 // Shorter for demo
+    });
+
+    setTimeout(() => {
+      eventBus.emit('ai:response_notify', {
+        message: '✅ Task completion - now stays visible for 10 seconds instead of 6!',
+        duration: 4000 // Shorter for demo
+      });
+    }, 2000);
+
+    setTimeout(() => {
+      eventBus.emit('ai:response_notify', {
+        message: '🔍 Search results - also stay for 10 seconds, much easier to read!',
+        duration: 4000 // Shorter for demo
+      });
+    }, 4000);
+
+    setTimeout(() => {
+      eventBus.emit('ai:response_notify', {
+        message: 'All messages now have extended durations - perfect for reading! 💬✨',
+        duration: 8000
+      });
+    }, 6000);
+  };
+
+  const testBottomChatSystem = () => {
+    // Test the single message conversational system with extended durations
+    eventBus.emit('ai:ai_conversational_response', {
+      response: 'Hello! Conversational responses now stay for 15 seconds - plenty of time to read! 🤖'
+    });
+
+    setTimeout(() => {
+      eventBus.emit('ai:ai_conversational_response', {
+        response: 'Perfect! Extended durations make it much easier to read longer responses without rushing. ✨'
+      });
+    }, 4000);
+
+    setTimeout(() => {
+      eventBus.emit('ai:ai_conversational_response', {
+        response: 'Final test - this message will stay visible for a full 15 seconds. Great for complex responses! 📖⏰'
+      });
+    }, 8000);
   };
 
   const testMarkdownFeatures = () => {
@@ -646,6 +710,7 @@ function sayHello() {
           />
          )}
           
+
          {/* Organize Button - Right Side Middle */}
          <button
            onClick={(e) => {
@@ -911,11 +976,35 @@ function sayHello() {
                   <span className="font-semibold">🎯 Test 4-Corner Resizing</span>
                 </div>
               </button>
+
+
+              <button
+                onClick={testNotificationSystem}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-cyan-500/60 to-blue-600/60 hover:from-cyan-500/80 hover:to-blue-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10 mt-4"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-cyan-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">💬 Test Bottom Notifications</span>
+                </div>
+              </button>
+
+              <button
+                onClick={testBottomChatSystem}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-teal-500/60 to-cyan-600/60 hover:from-teal-500/80 hover:to-cyan-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10 mt-4"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-teal-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">💬 Test Bottom Chat System</span>
+                </div>
+              </button>
             </div>
             </div>
           )}
         </div>
       </WindowManager>
+
+      {/* Bottom Chat System */}
+      <BottomChatNotifications />
     </div>
   );
 }

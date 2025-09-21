@@ -86,6 +86,28 @@ export class AIManager {
           return;
         }
         eventBus.emit(`ai:${type.toLowerCase()}`, data);
+
+        // Emit notifications for various AI events - all handled by bottom chat now
+        if (type === 'AI_RESPONSE_GENERATED') {
+          eventBus.emit('ai:response_notify', {
+            message: `Jarvis: ${data.response || 'Response generated'}`,
+            duration: 12000
+          });
+        } else if (type === 'TEXT_COMMAND_PROCESSED') {
+          const tasksCount = data.tasks?.length || 0;
+          if (tasksCount > 0) {
+            eventBus.emit('ai:response_notify', {
+              message: `✅ Completed ${tasksCount} task${tasksCount === 1 ? '' : 's'}`,
+              duration: 10000
+            });
+          }
+        } else if (type === 'AI_CONVERSATIONAL_RESPONSE') {
+          // Emit notification for conversational responses - now handled by bottom chat
+          eventBus.emit('ai:response_notify', {
+            message: data.response || 'Jarvis responded',
+            duration: 15000
+          });
+        }
       };
 
       this.worker.onerror = (error) => {

@@ -9,14 +9,19 @@ export class TaskParser {
     this.cerebrasClient = new CerebrasClient();
   }
 
-  async parseTextToTasks(input: { transcript: string; actionHistory: Array<{ tool: string; parameters: any; sourceText: string }>; uiContext: any }): Promise<{ new_tool_calls: Array<{ tool: string; parameters: any; sourceText: string }> }> {
+  async parseTextToTasks(input: { transcript: string; actionHistory: Array<{ tool: string; parameters: any; sourceText: string }>; uiContext: any }): Promise<{ new_tool_calls: Array<{ tool: string; parameters: any; sourceText: string }>; conversational_response?: string }> {
     const fullTranscript = (input?.transcript || '').toString();
     const uiContext = input?.uiContext || {};
     const actionHistory = Array.isArray(input?.actionHistory) ? input.actionHistory : [];
 
+    // Extract the most recent user input (assuming it's at the end of the transcript)
+    const sentences = fullTranscript.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    const recentInput = sentences.length > 0 ? sentences[sentences.length - 1].trim() : fullTranscript;
+
     console.log('🔍 [TaskParser] parseTextToTasks STARTED', {
       fullTranscript: fullTranscript,
       transcriptLength: fullTranscript.length,
+      recentInput: recentInput,
       transcriptPreview: fullTranscript.slice(-120),
       uiWindows: Array.isArray(uiContext?.windows) ? uiContext.windows.length : 0,
       actionCount: actionHistory.length,
@@ -29,14 +34,19 @@ export class TaskParser {
       '',
       'You will receive a JSON input with the user\'s full transcript, your recent action history, and the current UI state.',
       '',
+      'IMPORTANT: Focus on the MOST RECENT user input at the end of the transcript. While you have access to the full conversation history for context, your response should be specifically about what the user just said, not about earlier parts of the conversation.',
+      '',
       'Your task is to:',
-      '1. Carefully read the entire `fullTranscript`.',
+      '1. Carefully read the entire `fullTranscript`, paying special attention to the most recent user input.',
       '2. Compare the user\'s commands in the transcript against the `actionHistory`.',
       '3. Identify any explicit commands in the transcript that do NOT have a corresponding entry in the `actionHistory`.',
       '4. If you find new, complete commands, respond with a JSON object containing a `new_tool_calls` array.',
       '5. Each tool call in the array MUST include a `sourceText` property, containing the exact phrase from the transcript that justifies the action.',
-      '6. If there are no new commands, or if a command is incomplete (e.g., "open a graph showing..."), respond with an empty `new_tool_calls` array.',
-      '7. DO NOT re-issue tool calls for commands that are already present in the `actionHistory`.',
+      '6. If there are no new commands but the user is asking a question or making a statement that requires a response, include a `conversational_response` field with a helpful answer that addresses their LATEST input specifically.',
+      '7. If there are no new commands and no question/statement needing response, respond with an empty `new_tool_calls` array and no `conversational_response`.',
+      '8. DO NOT re-issue tool calls for commands that are already present in the `actionHistory`.',
+      '9. DO NOT reintroduce yourself or refer to topics from much earlier in the conversation unless directly relevant to the current input.',
+      '10. Keep responses focused and relevant to what the user just said.',
       '',
       'Command patterns to detect in addition to standard open/close/organize:',
       '- Edit window: examples',
@@ -49,6 +59,7 @@ export class TaskParser {
 
     const jsonPayload = {
       fullTranscript: fullTranscript,
+      recentInput: recentInput,
       actionHistory: actionHistory,
       uiContext: uiContext,
       availableTools: AVAILABLE_TOOLS
@@ -84,7 +95,7 @@ export class TaskParser {
 
     const content: unknown = response?.choices?.[0]?.message?.content;
 
-    const coerce = (input: unknown): { new_tool_calls: Array<{ tool: string; parameters: any; sourceText: string }> } => {
+    const coerce = (input: unknown): { new_tool_calls: Array<{ tool: string; parameters: any; sourceText: string }>; conversational_response?: string } => {
       const empty = { new_tool_calls: [] as Array<{ tool: string; parameters: any; sourceText: string }> };
       try {
         const obj = typeof input === 'string' ? JSON.parse(input) : input;
@@ -95,13 +106,23 @@ export class TaskParser {
           parameters: (typeof c?.parameters === 'object' && c?.parameters) ? c.parameters : (typeof c?.args === 'object' ? c.args : {}),
           sourceText: String(c?.sourceText || c?.source_text || '')
         })).filter((c: any) => c.tool && typeof c.parameters === 'object');
-        return { new_tool_calls: cleaned };
+
+        const result: { new_tool_calls: Array<{ tool: string; parameters: any; sourceText: string }>; conversational_response?: string } = { new_tool_calls: cleaned };
+
+        // Include conversational response if present
+        if (typeof (obj as any).conversational_response === 'string' && (obj as any).conversational_response.trim()) {
+          result.conversational_response = (obj as any).conversational_response.trim();
+        }
+
+        return result;
       } catch {
         return empty;
       }
     };
 
-    const llmCalls = coerce(content).new_tool_calls;
+    const llmResult = coerce(content);
+    const llmCalls = llmResult.new_tool_calls;
+    const conversationalResponse = llmResult.conversational_response;
 
     // Local fallbacks: detect common edit-window phrasing to avoid depending solely on LLM
     const localCalls: Array<{ tool: string; parameters: any; sourceText: string }> = [];
@@ -183,7 +204,10 @@ export class TaskParser {
     });
 
     // Fallback parsing for search commands if no tool calls found
-    let finalResult = { new_tool_calls: merged };
+    let finalResult: { new_tool_calls: Array<{ tool: string; parameters: any; sourceText: string }>; conversational_response?: string } = {
+      new_tool_calls: merged,
+      conversational_response: conversationalResponse
+    };
     if (finalResult.new_tool_calls.length === 0) {
       console.log('🔍 [TaskParser] No tool calls from LLM or local parsing, trying fallback search parsing');
       const searchPatterns = [
@@ -202,7 +226,8 @@ export class TaskParser {
               tool: 'search',
               parameters: { query },
               sourceText: match[0]
-            }]
+            }],
+            conversational_response: conversationalResponse
           };
           console.log('✅ [TaskParser] Found search command via fallback parsing:', {
             query: query,
