@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { UserNotesState, UserNotesProps } from './userNotes.types';
+import { eventBus } from '@/lib/eventBus';
 
 export function UserNotes({
-  placeholder = 'Start typing your personal notes here...'
+  placeholder = 'Start typing your personal notes here...',
+  windowId
 }: UserNotesProps) {
   const [notes, setNotes] = useState<UserNotesState>({
     content: '',
@@ -13,11 +15,32 @@ export function UserNotes({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newContent = e.target.value;
     setNotes({
-      content: e.target.value,
+      content: newContent,
       lastModified: new Date()
     });
+
+    // Emit content change for similarity analysis
+    if (windowId) {
+      eventBus.emit('window:content_changed', {
+        windowId,
+        content: newContent,
+        title: 'New Note'
+      });
+    }
   };
+
+  // Initial content setup
+  useEffect(() => {
+    if (windowId && notes.content) {
+      eventBus.emit('window:content_changed', {
+        windowId,
+        content: notes.content,
+        title: 'New Note'
+      });
+    }
+  }, [windowId, notes.content]);
 
   const clearNotes = () => {
     setNotes({
@@ -28,36 +51,30 @@ export function UserNotes({
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b bg-white">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-lg flex items-center justify-center shadow-md">
-            <span className="text-white text-lg">✏️</span>
+      {/* Header - ultra minimal */}
+      <div className="flex items-center justify-between px-2 py-1 border-b border-gray-600/30 bg-gray-800/50">
+        <div className="flex items-center space-x-1">
+          <div className="w-4 h-4 bg-gradient-to-br from-blue-400 to-indigo-500 rounded flex items-center justify-center">
+            <span className="text-white text-xs">✏️</span>
           </div>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-800">Personal Notes</h3>
-            <p className="text-xs text-gray-500">
-              Last modified: {notes.lastModified.toLocaleTimeString()}
-            </p>
-          </div>
+          <h3 className="text-xs font-semibold text-gray-100">Notes</h3>
         </div>
-
         <button
           onClick={clearNotes}
-          className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors"
+          className="px-1 py-0.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 rounded"
         >
-          Clear All
+          Clear
         </button>
       </div>
 
-      {/* Notes Area */}
-      <div className="flex-1 p-4">
+      {/* Notes Area - absolute maximum space */}
+      <div className="flex-1 px-1 py-1">
         <textarea
           ref={textareaRef}
           value={notes.content}
           onChange={handleContentChange}
           placeholder={placeholder}
-          className="w-full h-full resize-none border-none outline-none bg-transparent text-gray-800 leading-relaxed text-sm"
+          className="w-full h-full resize-none border-none outline-none bg-transparent text-cyan-200 leading-relaxed text-sm placeholder-cyan-400/60"
           style={{
             fontFamily: 'system-ui, -apple-system, sans-serif',
             lineHeight: '1.6'
@@ -65,14 +82,10 @@ export function UserNotes({
         />
       </div>
 
-      {/* Footer */}
-      <div className="border-t bg-gray-50 px-4 py-2 text-xs text-gray-500 flex justify-between">
-        <span>
-          {notes.content.split(/\s+/).filter(word => word.length > 0).length} words
-        </span>
-        <span>
-          {notes.content.length} characters
-        </span>
+      {/* Footer - absolute minimal */}
+      <div className="border-t border-gray-600/30 bg-gray-800/30 px-2 py-0.5 text-xs text-gray-400 flex justify-between">
+        <span>{notes.content.split(/\s+/).filter(word => word.length > 0).length}w</span>
+        <span>{notes.content.length}c</span>
       </div>
     </div>
   );

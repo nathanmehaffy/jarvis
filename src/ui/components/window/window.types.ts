@@ -14,16 +14,18 @@ export interface WindowProps {
   isActive?: boolean;
   isMinimized: boolean;
   isFullscreen?: boolean;
+  zIndex?: number;
   onFocus?: () => void;
   onMinimize: () => void;
   onRestore: () => void;
   onFullscreen?: () => void;
   onPositionChange?: (id: string, x: number, y: number) => void;
   onResize?: (width: number, height: number) => void;
-  // New props to unify ImageWindow
+  // New props to unify ImageWindow and support animations
   lockAspectRatio?: boolean;
   headerStyle?: 'standard' | 'minimal';
   resizable?: boolean;
+  animationState?: 'opening' | 'closing' | 'none';
 }
 
 export interface WindowState {

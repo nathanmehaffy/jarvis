@@ -12,6 +12,9 @@ export interface WindowData {
   height: number;
   zIndex: number;
   imageUrl?: string;
+  animationState?: 'opening' | 'closing' | 'none';
+  keywords?: string[];
+  contentHash?: string;
 }
 
 export interface WindowManagerState {

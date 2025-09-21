@@ -5,4 +5,5 @@ export interface UserNotesState {
 
 export interface UserNotesProps {
   placeholder?: string;
+  windowId?: string;
 }

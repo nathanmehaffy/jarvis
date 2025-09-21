@@ -90,12 +90,12 @@ export function MainUI() {
       id: 'input-window',
       title: 'Input Manager',
       component: InputWindow,
-      isMinimized: false,
       isFullscreen: false,
+      isMinimized: false,
       x: 0,
       y: 0,
-      width: 400,
-      height: 300
+      width: 500,
+      height: 400
     });
   };
 
@@ -104,26 +104,28 @@ export function MainUI() {
       id: 'ai-window',
       title: 'AI Manager',
       component: AIWindow,
-      isMinimized: false,
       isFullscreen: false,
-      x: 0,
-      y: 0,
-      width: 400,
-      height: 300
-    });
-  };
-
-  const openUserNotesWindow = () => {
-    windowManagerRef.current?.openWindow({
-      id: 'user-notes-window',
-      title: 'Personal Notes',
-      component: UserNotes,
       isMinimized: false,
-      isFullscreen: false,
       x: 0,
       y: 0,
       width: 500,
       height: 400
+    });
+  };
+
+  const openUserNotesWindow = () => {
+    const windowId = `user-notes-window-${Date.now()}`;
+    windowManagerRef.current?.openWindow({
+      id: windowId,
+      title: 'New Note',
+      component: () => <UserNotes windowId={windowId} />,
+      content: 'This is a new note',
+      isFullscreen: false,
+      isMinimized: false,
+      x: 0,
+      y: 0,
+      width: 600,
+      height: 320
     });
   };
 
@@ -132,12 +134,12 @@ export function MainUI() {
       id: 'system-output-window',
       title: 'System Output',
       component: SystemOutput,
-      isMinimized: false,
       isFullscreen: false,
+      isMinimized: false,
       x: 0,
       y: 0,
-      width: 600,
-      height: 450
+      width: 700,
+      height: 350
     });
   };
 
@@ -145,15 +147,26 @@ export function MainUI() {
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
     const padding = 20;
-    const minGap = 10;
+    const minGap = 40;
+    
+    // Simple restriction: right edge cannot exceed 95% to the left (5% reserved for image drop)
+    const maxRightEdge = screenWidth * 0.95;
+    const maxAllowedX = maxRightEdge - windowWidth;
     
     const existingWindows = windowManagerRef.current?.getWindows?.() || [];
     
     const isPositionAvailable = (x: number, y: number) => {
+      // Check if window would go off screen
       if (x + windowWidth > screenWidth - padding || y + windowHeight > screenHeight - padding) {
         return false;
       }
       
+      // Check if right edge exceeds 95% restriction
+      if (x + windowWidth > maxRightEdge) {
+        return false;
+      }
+      
+      // Check for overlaps with existing windows
       return !existingWindows.some(window => {
         const windowX = window.x || 0;
         const windowY = window.y || 0;
@@ -167,17 +180,19 @@ export function MainUI() {
       });
     };
     
-    for (let y = padding; y + windowHeight <= screenHeight - padding; y += 10) {
-      for (let x = padding; x + windowWidth <= screenWidth - padding; x += 10) {
+    // STRICT TOP-LEFT PRIORITY: Scan from top-left, row by row
+    for (let y = padding; y + windowHeight <= screenHeight - padding; y += 15) {
+      for (let x = padding; x <= maxAllowedX; x += 15) {
         if (isPositionAvailable(x, y)) {
           return { x, y };
         }
       }
     }
     
+    // Fallback to top-left if no space found (instead of center)
     return {
-      x: Math.max(padding, (screenWidth - windowWidth) / 2),
-      y: Math.max(padding, (screenHeight - windowHeight) / 2)
+      x: padding,
+      y: padding
     };
   };
 
@@ -188,33 +203,189 @@ export function MainUI() {
     img.onload = () => {
       const screenWidth = window.innerWidth;
       const screenHeight = window.innerHeight;
-      const maxWidth = (screenWidth * 2) / 5;
-      const maxHeight = (screenHeight * 2) / 5;
-
       const aspectRatio = img.width / img.height;
-
+      
+      // Get existing windows to determine if this is the first or subsequent
+      const existingWindows = windowManagerRef.current?.getWindows?.() || [];
+      const isFirstWindow = existingWindows.length === 0;
+      
       let width, height;
-
-      if (aspectRatio > 1) {
-        width = maxWidth;
-        height = width / aspectRatio;
-
-        if (height > maxHeight) {
-          height = maxHeight;
-          width = height * aspectRatio;
+      
+        // All windows: Use area-based constraints only
+        const screenArea = screenWidth * screenHeight;
+        const minArea = screenArea * 0.1; // 10% of screen area
+        const maxArea = screenArea * 0.25; // 25% of screen area
+        
+        let targetArea;
+        if (isFirstWindow) {
+          // First window: Use maximum area (no packing logic needed)
+          targetArea = maxArea;
+        } else {
+          // Subsequent windows: Calculate optimal packing area by analyzing available space
+          const padding = 20;
+          const minGap = 40;
+          const availableWidth = screenWidth * 0.95 - padding * 2; // 95% minus padding
+          const availableHeight = screenHeight - padding * 2;
+          
+          // Find the largest available rectangular area for optimal packing
+          let bestFitArea = minArea; // Start with minimum
+          let bestWidth = 0;
+          let bestHeight = 0;
+          
+          // Test different sizes within the min/max area constraints, starting from max and working down
+          for (let testArea = maxArea; testArea >= minArea; testArea -= (maxArea - minArea) / 20) {
+            // Calculate dimensions for this test area maintaining aspect ratio
+            let testWidth, testHeight;
+            if (aspectRatio > 1) {
+              testWidth = Math.sqrt(testArea * aspectRatio);
+              testHeight = Math.sqrt(testArea / aspectRatio);
+            } else {
+              testHeight = Math.sqrt(testArea / aspectRatio);
+              testWidth = Math.sqrt(testArea * aspectRatio);
+            }
+            
+            // Check if this size can fit in available space with optimal positioning
+            let canFit = false;
+            
+            // Try positions starting from top-left, scanning systematically (prioritize top-left and tight packing)
+            let bestPosition = null;
+            let bestScore = Infinity; // Lower score = better position (closer to existing windows)
+            
+            for (let y = padding; y + testHeight + padding <= screenHeight; y += 15) {
+              for (let x = padding; x + testWidth + padding <= availableWidth + padding * 2; x += 15) {
+                // Check if this position overlaps with existing windows
+                const wouldOverlap = existingWindows.some(win => {
+                  const winLeft = win.x || 0;
+                  const winTop = win.y || 0;
+                  const winRight = winLeft + (win.width || 0);
+                  const winBottom = winTop + (win.height || 0);
+                  
+                  return !(x >= winRight + minGap || 
+                          x + testWidth <= winLeft - minGap || 
+                          y >= winBottom + minGap || 
+                          y + testHeight <= winTop - minGap);
+                });
+                
+                if (!wouldOverlap) {
+                  // Calculate a score for this position (prioritize tight packing)
+                  let score = 0;
+                  
+                  // Primary score: distance from top-left (prioritize top-left)
+                  score += (x - padding) * 0.1 + (y - padding) * 0.1;
+                  
+                  // Secondary score: distance to nearest existing window (prioritize tight packing)
+                  if (existingWindows.length > 0) {
+                    const minDistanceToWindow = Math.min(...existingWindows.map(win => {
+                      const winCenterX = (win.x || 0) + (win.width || 0) / 2;
+                      const winCenterY = (win.y || 0) + (win.height || 0) / 2;
+                      const testCenterX = x + testWidth / 2;
+                      const testCenterY = y + testHeight / 2;
+                      return Math.sqrt(Math.pow(testCenterX - winCenterX, 2) + Math.pow(testCenterY - winCenterY, 2));
+                    }));
+                    score += minDistanceToWindow * 0.5; // Penalize positions far from existing windows
+                  }
+                  
+                  // Check for adjacent placement bonus (reward positions next to existing windows)
+                  const isAdjacentToWindow = existingWindows.some(win => {
+                    const winLeft = win.x || 0;
+                    const winTop = win.y || 0;
+                    const winRight = winLeft + (win.width || 0);
+                    const winBottom = winTop + (win.height || 0);
+                    
+                    // Check if this position is adjacent (within minGap) to any existing window
+                    return (
+                      // Adjacent horizontally
+                      (Math.abs(x - winRight) <= minGap + 5 && !(y + testHeight <= winTop || y >= winBottom)) ||
+                      (Math.abs(x + testWidth - winLeft) <= minGap + 5 && !(y + testHeight <= winTop || y >= winBottom)) ||
+                      // Adjacent vertically  
+                      (Math.abs(y - winBottom) <= minGap + 5 && !(x + testWidth <= winLeft || x >= winRight)) ||
+                      (Math.abs(y + testHeight - winTop) <= minGap + 5 && !(x + testWidth <= winLeft || x >= winRight))
+                    );
+                  });
+                  
+                  if (isAdjacentToWindow) {
+                    score -= 100; // Big bonus for adjacent placement
+                  }
+                  
+                  if (score < bestScore) {
+                    bestScore = score;
+                    bestPosition = { x, y };
+                  }
+                  
+                  canFit = true;
+                }
+              }
+            }
+            
+            // Use the best position found (if any)
+            if (bestPosition) {
+              canFit = true;
+            }
+            
+            // If this size fits and is larger than our current best, use it
+            if (canFit && testArea > bestFitArea) {
+              bestFitArea = testArea;
+              bestWidth = testWidth;
+              bestHeight = testHeight;
+              // Since we're testing from largest to smallest, first fit is optimal
+              break;
+            }
+          }
+          
+          // Use the optimal fit area, or fall back to minimum if nothing fits well
+          targetArea = bestFitArea;
         }
-      } else {
-        height = maxHeight;
-        width = height * aspectRatio;
-
-        if (width > maxWidth) {
-          width = maxWidth;
+        
+        // Calculate dimensions from target area while maintaining aspect ratio
+        if (aspectRatio > 1) {
+          // Landscape: width = sqrt(area * aspectRatio), height = sqrt(area / aspectRatio)
+          width = Math.sqrt(targetArea * aspectRatio);
+          height = Math.sqrt(targetArea / aspectRatio);
+        } else {
+          // Portrait: height = sqrt(area / aspectRatio), width = sqrt(area * aspectRatio)
+          height = Math.sqrt(targetArea / aspectRatio);
+          width = Math.sqrt(targetArea * aspectRatio);
+        }
+        
+        // Ensure the area is within bounds
+        const currentArea = width * height;
+        if (currentArea < minArea) {
+          // Scale up to minimum area
+          const scaleFactor = Math.sqrt(minArea / currentArea);
+          width *= scaleFactor;
+          height *= scaleFactor;
+        } else if (currentArea > maxArea) {
+          // Scale down to maximum area
+          const scaleFactor = Math.sqrt(maxArea / currentArea);
+          width *= scaleFactor;
+          height *= scaleFactor;
+        }
+        
+        // Ensure we don't exceed screen bounds (fallback protection)
+        const maxScreenWidth = screenWidth * 0.95;
+        const maxScreenHeight = screenHeight;
+        if (width > maxScreenWidth) {
+          width = maxScreenWidth;
           height = width / aspectRatio;
+          // Recalculate to ensure we stay within area bounds
+          const newArea = width * height;
+          if (newArea > maxArea) {
+            const areaScaleFactor = Math.sqrt(maxArea / newArea);
+            width *= areaScaleFactor;
+            height *= areaScaleFactor;
+          }
         }
-      }
-
-      width = Math.max(width, 300);
-      height = Math.max(height, 200);
+        if (height > maxScreenHeight) {
+          height = maxScreenHeight;
+          width = height * aspectRatio;
+          // Recalculate to ensure we stay within area bounds
+          const newArea = width * height;
+          if (newArea > maxArea) {
+            const areaScaleFactor = Math.sqrt(maxArea / newArea);
+            width *= areaScaleFactor;
+            height *= areaScaleFactor;
+          }
+        }
 
       const position = findOptimalWindowPosition(Math.round(width), Math.round(height));
 
@@ -222,13 +393,13 @@ export function MainUI() {
         id: windowId,
         title: `Image: ${imageName}`,
         component: () => <ImageViewer imageUrl={imageUrl} imageName={imageName} windowId={windowId} />,
+        isFullscreen: false,
+        isMinimized: false,
         x: position.x,
         y: position.y,
         width: Math.round(width),
         height: Math.round(height),
-        imageUrl: imageUrl,
-        isMinimized: false,
-        isFullscreen: false
+        imageUrl: imageUrl
       });
     };
     img.src = imageUrl;
@@ -242,7 +413,7 @@ export function MainUI() {
     images.forEach((image, index) => {
       setTimeout(() => {
         openImageViewerWindow(image.url, image.name);
-      }, index * 100);
+      }, index * 150);
     });
   };
 
@@ -251,12 +422,12 @@ export function MainUI() {
       id: 'graph-window',
       title: 'Line Graph',
       component: GraphWindow,
-      isMinimized: false,
       isFullscreen: false,
+      isMinimized: false,
       x: 0,
       y: 0,
-      width: 750,
-      height: 550
+      width: 850,
+      height: 650
     });
   };
 
@@ -265,12 +436,12 @@ export function MainUI() {
       id: 'bar-graph-window',
       title: 'Bar Graph',
       component: BarGraphWindow,
-      isMinimized: false,
       isFullscreen: false,
+      isMinimized: false,
       x: 0,
       y: 0,
-      width: 750,
-      height: 550
+      width: 850,
+      height: 650
     });
   };
 
@@ -279,12 +450,12 @@ export function MainUI() {
       id: 'pie-chart-window',
       title: 'Pie Chart',
       component: PieChartWindow,
-      isMinimized: false,
       isFullscreen: false,
+      isMinimized: false,
       x: 0,
       y: 0,
-      width: 800,
-      height: 600
+      width: 900,
+      height: 700
     });
   };
 
@@ -331,26 +502,47 @@ export function MainUI() {
             openPieChartWindow={openPieChartWindow}
             openPreloadedImageWindow={openPreloadedImageWindow}
           />
-        )}
-         
-        {/* Image Drop Zone - Fixed Position */}
-        <div className="fixed top-4 right-4 z-50">
+         )}
+          
+         {/* Organize Button - Right Side Middle */}
+         <button
+           onClick={(e) => {
+             e.preventDefault();
+             e.stopPropagation();
+             // Use setTimeout to ensure we're not in a render cycle
+             setTimeout(() => {
+               if (windowManagerRef.current?.organizeWindows) {
+                 windowManagerRef.current.organizeWindows();
+               }
+             }, 0);
+           }}
+           className="fixed right-4 top-1/2 -translate-y-1/2 z-40 w-16 h-16 bg-purple-500/30 backdrop-blur-xl border-2 border-purple-400/50 rounded-2xl text-purple-200 shadow-2xl flex flex-col items-center justify-center transition-all duration-300 hover:scale-110 hover:bg-purple-500/40 group"
+           title="Organize Windows - Maximize Area"
+         >
+           <svg className="w-8 h-8 transition-transform duration-300 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+           </svg>
+           <span className="text-xs font-medium mt-1 opacity-80 group-hover:opacity-100 transition-opacity">Organize</span>
+         </button>
+
+         {/* Image Drop Zone - Fixed Position */}
+         <div className="fixed top-4 right-4 z-50">
           {isImageDropMinimized ? (
             /* Collapsed - Circular Icon */
             <button
               onClick={() => setIsImageDropMinimized(false)}
-              className="w-16 h-16 bg-white/10 backdrop-blur-xl border border-white/20 rounded-full text-white shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 hover:bg-white/20 group"
+              className="w-16 h-16 bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl text-white shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 hover:bg-white/20 group"
               title="Open Image Upload"
             >
-              <svg className="w-6 h-6 transition-transform duration-300 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              <svg className="w-8 h-8 transition-transform duration-300 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </button>
           ) : (
             /* Expanded - Full Drop Zone */
-            <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl text-white shadow-2xl w-64 transition-all duration-300">
-              <div className="flex items-center justify-between p-4 pb-2">
-                <h2 className="text-lg font-semibold break-words">Image Upload</h2>
+            <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl text-white shadow-2xl w-36 h-36 transition-all duration-300">
+              <div className="flex items-center justify-between p-3 pb-1">
+                <h2 className="text-sm font-semibold break-words">Upload</h2>
                 <button
                   onClick={() => setIsImageDropMinimized(true)}
                   className="text-white/70 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-full"
@@ -361,7 +553,7 @@ export function MainUI() {
                   </svg>
                 </button>
               </div>
-                <div className="px-6 pb-6">
+                <div className="px-6 pb-3">
                   <ImageDropZone 
                     onImageUpload={handleImageUpload} 
                     onMultipleImageUpload={handleMultipleImageUpload}
