@@ -107,23 +107,17 @@ export function VoiceTaskListener({ pushToTalk = false }: { pushToTalk?: boolean
     let pttActive = false;
     let pressedAt = 0;
 
-    const isEditableTarget = (el: EventTarget | null): boolean => {
-      const t = el as HTMLElement | null;
-      if (!t) return false;
-      const tag = t.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'textarea') return true;
-      // contentEditable elements
-      const ce = (t as HTMLElement).getAttribute?.('contenteditable');
-      return ce === '' || ce === 'true';
+    const isSpaceEvent = (e: KeyboardEvent): boolean => {
+      return e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar';
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== 'Space') return;
-      if (isEditableTarget(e.target)) return; // don't hijack typing in inputs
+      if (!isSpaceEvent(e)) return;
       if (pttActive) return; // ignore repeats while held
       pttActive = true;
       pressedAt = Date.now();
       e.preventDefault();
+      e.stopPropagation();
       // start recording immediately
       if (!isListening) {
         start();
@@ -137,10 +131,11 @@ export function VoiceTaskListener({ pushToTalk = false }: { pushToTalk?: boolean
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code !== 'Space') return;
+      if (!isSpaceEvent(e)) return;
       if (!pttActive) return;
       pttActive = false;
       e.preventDefault();
+      e.stopPropagation();
       // stop recording and immediately submit current buffer (debounce very short presses)
       const heldMs = Date.now() - pressedAt;
       if (isListening) {
@@ -152,11 +147,11 @@ export function VoiceTaskListener({ pushToTalk = false }: { pushToTalk?: boolean
       // Full text history still maintained in lastEmittedFullTextRef
     };
 
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('keydown', onKeyDown, { capture: true });
+    window.addEventListener('keyup', onKeyUp, { capture: true });
     return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('keydown', onKeyDown, { capture: true } as EventListenerOptions);
+      window.removeEventListener('keyup', onKeyUp, { capture: true } as EventListenerOptions);
     };
   }, [pushToTalk, start, stop]);
 
