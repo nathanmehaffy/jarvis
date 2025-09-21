@@ -111,6 +111,17 @@ export class AIManager {
           eventBus.emit('ai:error', e);
         }
       });
+
+      eventBus.on('system:message', (data: { message: string }) => {
+        try {
+          const message = (data?.message || '').trim();
+          if (!message) return;
+          console.log('[AIManager] Received system:message, processing text command:', message);
+          this.processTextCommand(`System Note: ${message}`);
+        } catch (e) {
+          eventBus.emit('ai:error', e);
+        }
+      });
     } catch (error) {
       console.error('Failed to initialize AI worker:', error);
       eventBus.emit('ai:error', error);

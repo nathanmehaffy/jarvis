@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { eventBus } from '@/lib/eventBus';
 
 interface ImageDropZoneProps {
   onImageUpload: (imageUrl: string, imageName: string) => void;
@@ -11,6 +12,42 @@ export function ImageDropZone({ onImageUpload, onMultipleImageUpload }: ImageDro
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const analyzeAndDescribeImage = async (file: File) => {
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const imageUrl = event.target?.result as string;
+        const base64Image = imageUrl.split(',')[1];
+
+        if (base64Image) {
+          console.log('[ImageDropZone] Sending image for analysis...');
+          eventBus.emit('system:message', { message: 'Analyzing image...' });
+          const response = await fetch('/api/describe-image', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ image: base64Image, mimeType: file.type }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const description = data.result;
+            console.log('[ImageDropZone] Received description:', description);
+            eventBus.emit('system:message', { message: `Image analysis complete. Description: ${description}` });
+          } else {
+            const errorData = await response.json();
+            eventBus.emit('system:error', { error: `Image analysis failed: ${errorData.error}` });
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Error in analyzeAndDescribeImage:', error);
+      eventBus.emit('system:error', { error: 'An unexpected error occurred during image analysis.' });
+    }
+  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -59,6 +96,7 @@ export function ImageDropZone({ onImageUpload, onMultipleImageUpload }: ImageDro
       const imageUrl = event.target?.result as string;
       onImageUpload(imageUrl, file.name);
       setIsUploading(false);
+      analyzeAndDescribeImage(file); // Call the analysis function
     };
     reader.onerror = () => {
       setIsUploading(false);
@@ -70,6 +108,8 @@ export function ImageDropZone({ onImageUpload, onMultipleImageUpload }: ImageDro
     setIsUploading(true);
     
     const imagePromises = files.map(file => {
+      // Also trigger analysis for each file
+      analyzeAndDescribeImage(file);
       return new Promise<{ url: string; name: string }>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (event) => {
