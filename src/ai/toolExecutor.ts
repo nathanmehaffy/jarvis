@@ -14,7 +14,7 @@ export interface ExecutionResult {
 export class ToolExecutor {
   // Note: all web search now routes through server API; no client Gemini usage
   constructor() {}
-  async executeTasks(tasks: Task[]): Promise<ExecutionResult[]> {
+  async executeTasks(tasks: Task[], uiContext?: any): Promise<ExecutionResult[]> {
     eventBus.emit('ai:task_queue_updated', tasks);
     const results: ExecutionResult[] = [];
     
