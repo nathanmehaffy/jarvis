@@ -17,7 +17,11 @@ export function LineGraph({
   showGrid = true,
   showPoints = true,
   lineThickness = 2,
-  pointRadius = 4
+  pointRadius = 4,
+  shadeFromY = undefined,
+  shadeBetweenX = undefined,
+  areaFill = 'rgba(139,92,246,0.18)',
+  areaStroke = '#8b5cf6'
 }: LineGraphProps) {
   const [hoveredPoint, setHoveredPoint] = useState<DataPoint | null>(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -58,6 +62,34 @@ export function LineGraph({
     const points = data.map(d => `${scaleX(d.x)},${scaleY(d.y)}`).join(' L ');
     return `M ${points}`;
   }, [data, bounds, chartWidth, chartHeight]);
+
+  const shadedPolygon = useMemo(() => {
+    if (!shadeBetweenX || shadeFromY === undefined || data.length === 0) return null;
+
+    const xMin = Math.min(shadeBetweenX.from, shadeBetweenX.to);
+    const xMax = Math.max(shadeBetweenX.from, shadeBetweenX.to);
+    const within = data
+      .filter(d => d.x >= xMin && d.x <= xMax)
+      .sort((a,b) => a.x - b.x);
+
+    if (within.length < 2) return null;
+
+    const points = [
+      `${scaleX(within[0].x)},${scaleY(shadeFromY)}`,
+      ...within.map(d => `${scaleX(d.x)},${scaleY(d.y)}`),
+      `${scaleX(within[within.length - 1].x)},${scaleY(shadeFromY)}`
+    ].join(' ');
+
+    return (
+      <polygon
+        points={points}
+        fill={areaFill}
+        stroke={areaStroke}
+        strokeWidth={1}
+        opacity={0.9}
+      />
+    );
+  }, [data, shadeBetweenX, shadeFromY, areaFill, areaStroke, chartWidth, chartHeight, bounds]);
 
   const gridLines = useMemo(() => {
     const lines = [];
@@ -173,6 +205,9 @@ export function LineGraph({
           <g transform={`translate(${margin.left}, ${margin.top})`}>
             {/* Grid lines */}
             {gridLines}
+
+          {/* Shaded area under curve */}
+          {shadedPolygon}
 
             {/* Main line */}
             {data.length > 1 && (

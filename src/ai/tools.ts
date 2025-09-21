@@ -96,6 +96,22 @@ export const AVAILABLE_TOOLS: Tool[] = [
     }
   },
   {
+    name: 'show_integral_visual',
+    description: 'Open a graph window visualizing a single-variable integral with LaTeX header.',
+    parameters: {
+      type: 'object',
+      properties: {
+        expression: { type: 'string', description: 'Expression in variable, e.g., sin(x) + x^2' },
+        variable: { type: 'string', description: 'Variable name, default x' },
+        lower: { type: 'number', description: 'Lower bound a' },
+        upper: { type: 'number', description: 'Upper bound b' },
+        samples: { type: 'number', description: 'Sampling count (default 200)' },
+        title: { type: 'string', description: 'Optional window title' }
+      },
+      required: ['expression', 'lower', 'upper']
+    }
+  },
+  {
     name: 'search',
     description: 'Performs a web-grounded search using AI and displays results in a new window. Use for queries like "search for [topic]" or "find information about [subject]".',
     parameters: {

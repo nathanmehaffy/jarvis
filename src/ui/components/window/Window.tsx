@@ -330,8 +330,8 @@ export function Window({
 				</>
 			)}
 			{!isMinimized && (
-				<div className={`w-full bg-black/30 backdrop-blur-sm border-t border-cyan-400/20 ${isFullscreen ? 'h-[calc(100vh-40px)]' : 'h-[calc(100%-40px)]'}`}>
-					<div className="p-1">
+				<div className={`w-full bg-black/30 backdrop-blur-sm border-t border-cyan-400/20 ${isFullscreen ? 'h-[calc(100vh-40px)]' : 'h-[calc(100%-40px)]'} overflow-hidden`}>
+					<div className="h-full overflow-y-auto overflow-x-hidden p-1">
 						{children}
 					</div>
 				</div>

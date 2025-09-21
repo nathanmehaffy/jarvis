@@ -19,6 +19,10 @@ export interface LineGraphProps {
   showPoints?: boolean;
   lineThickness?: number;
   pointRadius?: number;
+  shadeFromY?: number;
+  shadeBetweenX?: { from: number; to: number };
+  areaFill?: string;
+  areaStroke?: string;
 }
 
 export interface GraphBounds {

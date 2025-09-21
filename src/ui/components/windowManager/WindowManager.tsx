@@ -5,6 +5,7 @@ import { Window } from '../window';
 import { WindowData, WindowManagerState } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
 import { SearchResultsWindow } from '../searchResults';
+import IntegralGraphWindow from '@/ui/components/mathVisual/IntegralGraphWindow';
 import { MarkdownText } from '../markdownText';
 // import { contentSimilarityAnalyzer } from '@/lib/contentSimilarity';
 
@@ -83,6 +84,17 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
 
     // If no free space found, use top-left fallback
     return { x: margin, y: margin };
+  };
+
+  const getReasonableSize = (requestedWidth?: number, requestedHeight?: number): { width: number; height: number } => {
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 1080;
+    const baseW = Math.round(Math.min(Math.max(viewportWidth * 0.42, 520), 980));
+    const baseH = Math.round(Math.min(Math.max(viewportHeight * 0.46, 380), 760));
+    return {
+      width: requestedWidth ?? baseW,
+      height: requestedHeight ?? baseH
+    };
   };
 
   const organizeWindows = () => {
@@ -345,12 +357,13 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
 
       const currentWindows = prev.windows.filter(w => w.id !== windowData.id);
 
-      const optimalPosition = getOptimalPosition(windowData.width, windowData.height, currentWindows);
+      const size = getReasonableSize(windowData.width, windowData.height);
+      const optimalPosition = getOptimalPosition(size.width, size.height, currentWindows);
 
       console.log('📍 [WindowManager] Calculated optimal position', {
         windowId: windowData.id,
         optimalPosition,
-        windowSize: { width: windowData.width, height: windowData.height },
+        windowSize: { width: size.width, height: size.height },
         timestamp: new Date().toISOString()
       });
 
@@ -362,6 +375,8 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         autoTitle: !windowData.title,
         x: optimalPosition.x,
         y: optimalPosition.y,
+        width: size.width,
+        height: size.height,
         isOpen: true,
         isFullscreen: false,
         zIndex: prev.nextZIndex,
@@ -370,7 +385,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         contentHash: windowData.content?.slice(0, 100)
       };
 
-      const newState = {
+      let newState = {
         ...prev,
         windows: [
           ...currentWindows,
@@ -379,6 +394,25 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         activeWindowId: windowData.id,
         nextZIndex: prev.nextZIndex + 1
       };
+
+      // Auto-minimize older windows if too many visible
+      const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
+      const maxVisible = viewportWidth < 1280 ? 3 : 4;
+      const visible = newState.windows.filter(w => !w.isMinimized);
+      if (visible.length > maxVisible) {
+        const toMinimizeCount = visible.length - maxVisible;
+        const minimizeCandidates = newState.windows
+          .filter(w => !w.isMinimized && w.id !== newWindow.id)
+          .slice(0, toMinimizeCount);
+        newState = {
+          ...newState,
+          windows: newState.windows.map(w =>
+            minimizeCandidates.find(m => m.id === w.id)
+              ? { ...w, isMinimized: true }
+              : w
+          )
+        };
+      }
 
       console.log('✨ [WindowManager] New state prepared', {
         windowId: windowData.id,
@@ -597,15 +631,66 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
           timestamp: new Date().toISOString()
         });
 
+        // Attempt to auto-detect LaTeX integral in content and open a graph window
+        try {
+          if (data?.type !== 'math-visual') {
+            const integralMatch = content.match(/\\int_\{([^}]*)\}\^\{([^}]*)\}\s*([\s\S]*?)\s*d([a-zA-Z])/);
+            if (integralMatch) {
+              const lower = Number(integralMatch[1]);
+              const upper = Number(integralMatch[2]);
+              let expr = integralMatch[3];
+              const variable = integralMatch[4];
+              if (Number.isFinite(lower) && Number.isFinite(upper)) {
+                expr = expr
+                  .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '($1)/($2)')
+                  .replace(/\\cdot/g, '*')
+                  .replace(/\\left\(/g, '(')
+                  .replace(/\\right\)/g, ')')
+                  .replace(/\\,/g, ' ')
+                  .replace(/\^\{([^}]*)\}/g, '^($1)');
+                setTimeout(() => {
+                  eventBus.emit('ui:open_window', {
+                    type: 'math-visual',
+                    title: `Graph of f(${variable}) over [${lower}, ${upper}]`,
+                    expression: expr,
+                    variable,
+                    lower,
+                    upper,
+                    size: { width: 860, height: 600 }
+                  });
+                }, 0);
+              }
+            }
+          }
+        } catch {}
+
         // Determine component based on type
         let component: React.ComponentType;
         if (data?.type === 'search-results') {
           console.log('🔍 [WindowManager] Creating SearchResultsWindow component');
           component = () => <SearchResultsWindow content={content} />;
+        } else if (data?.type === 'math-visual') {
+          console.log('🧮 [WindowManager] Creating IntegralGraphWindow component');
+          const anyData = data as any;
+          const expression = String(anyData?.expression || 'sin(x)');
+          const variable = String(anyData?.variable || 'x');
+          const lower = Number(anyData?.lower ?? 0);
+          const upper = Number(anyData?.upper ?? Math.PI);
+          const samples = Number(anyData?.samples ?? 200);
+          component = () => (
+            <IntegralGraphWindow
+              expression={expression}
+              variable={variable}
+              lower={lower}
+              upper={upper}
+              samples={samples}
+              title={title}
+            />
+          );
         } else {
           console.log('📄 [WindowManager] Creating generic window component');
           component = ({ content }: { content?: string }) => (
-            <div className="p-4">
+            <div className="p-4 h-full">
               <MarkdownText className="text-sm">
                 {String(content || '')}
               </MarkdownText>
