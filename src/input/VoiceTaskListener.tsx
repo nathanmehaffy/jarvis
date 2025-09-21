@@ -57,8 +57,10 @@ export function VoiceTaskListener({ pushToTalk = false }: { pushToTalk?: boolean
     autoStart: !pushToTalk,
     continuous: !pushToTalk,
     onTranscript: (data) => {
+      console.log('[PTT] Received transcript data:', { data, pushToTalk });
       if (data?.fullText) {
         latestFullTextRef.current = data.fullText.trim();
+        console.log('[PTT] Updated latestFullTextRef:', latestFullTextRef.current);
       }
       if (data.final && data.final.trim()) {
         // Compute and set new buffer synchronously to ensure attemptProcessing sees it
@@ -66,11 +68,13 @@ export function VoiceTaskListener({ pushToTalk = false }: { pushToTalk?: boolean
         bufferRef.current = newBuffer;
         setBuffer(newBuffer);
         lastBufferAppendAtRef.current = Date.now();
+        console.log('[PTT] Updated buffer with final transcript:', { newBuffer, pushToTalk });
         // In continuous mode, coalesce with a short silence timer; in PTT, defer to spacebar release
         if (!pushToTalk) {
           scheduleTimer(SILENCE_CONFIRM_MS);
         }
       } else if (data.interim && data.interim.trim()) {
+        console.log('[PTT] Received interim transcript:', data.interim);
         // Update activity timestamp to indicate user is still speaking
         lastBufferAppendAtRef.current = Date.now();
         // Periodic streaming calls while speaking
@@ -88,12 +92,15 @@ export function VoiceTaskListener({ pushToTalk = false }: { pushToTalk?: boolean
 
   // Ensure recorder state matches mode immediately on toggle
   useEffect(() => {
+    console.log('[PTT] Mode toggle effect:', { pushToTalk, isSupported, isListening });
     if (!isSupported) return;
     if (pushToTalk) {
       // Turn off continuous listening when entering PTT mode
+      console.log('[PTT] Entering PTT mode, stopping continuous listening');
       stop();
     } else {
       // Resume always-on listening when exiting PTT mode if not already
+      console.log('[PTT] Exiting PTT mode, resuming continuous listening if needed');
       if (!isListening) {
         start();
       }
@@ -102,7 +109,11 @@ export function VoiceTaskListener({ pushToTalk = false }: { pushToTalk?: boolean
 
   // Push-to-Talk: handle Spacebar hold to temporarily start recording and submit on release
   useEffect(() => {
-    if (!pushToTalk) return;
+    console.log('[PTT] Setting up push-to-talk listeners, pushToTalk:', pushToTalk);
+    if (!pushToTalk) {
+      console.log('[PTT] Push-to-talk disabled, skipping setup');
+      return;
+    }
 
     let pttActive = false;
     let pressedAt = 0;
@@ -112,15 +123,28 @@ export function VoiceTaskListener({ pushToTalk = false }: { pushToTalk?: boolean
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
+      console.log('[PTT] KeyDown event:', { code: e.code, key: e.key, pushToTalk, isSpaceEvent: isSpaceEvent(e) });
       if (!isSpaceEvent(e)) return;
-      if (pttActive) return; // ignore repeats while held
+      if (pttActive) {
+        console.log('[PTT] Ignoring repeat space press');
+        return; // ignore repeats while held
+      }
+      console.log('[PTT] Starting push-to-talk recording');
       pttActive = true;
       pressedAt = Date.now();
       e.preventDefault();
       e.stopPropagation();
-      // start recording immediately
-      if (!isListening) {
-        start();
+      // start recording immediately - force start in PTT mode regardless of isListening state
+      console.log('[PTT] Attempting to start recording, isListening:', isListening);
+      const startResult = start();
+      console.log('[PTT] Start recording result:', startResult);
+      if (!startResult) {
+        console.log('[PTT] Failed to start recording, forcing stop then start');
+        stop();
+        setTimeout(() => {
+          const retryResult = start();
+          console.log('[PTT] Retry start result:', retryResult);
+        }, 50);
       }
       // cancel any pending silence timers
       if (scheduledTimeoutRef.current !== null) {
@@ -131,8 +155,13 @@ export function VoiceTaskListener({ pushToTalk = false }: { pushToTalk?: boolean
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
+      console.log('[PTT] KeyUp event:', { code: e.code, key: e.key, pushToTalk, isSpaceEvent: isSpaceEvent(e), pttActive });
       if (!isSpaceEvent(e)) return;
-      if (!pttActive) return;
+      if (!pttActive) {
+        console.log('[PTT] KeyUp but PTT not active');
+        return;
+      }
+      console.log('[PTT] Stopping push-to-talk recording');
       pttActive = false;
       e.preventDefault();
       e.stopPropagation();
@@ -141,17 +170,42 @@ export function VoiceTaskListener({ pushToTalk = false }: { pushToTalk?: boolean
       if (isListening) {
         stop();
       }
-      // process immediately with whatever we captured
-      attemptProcessingRef.current?.('final');
+
+      // Force AI processing even if no transcript was captured
+      // This ensures the AI gets triggered when spacebar is released
+      setTimeout(() => {
+        const currentBuffer = bufferRef.current || '';
+        const latestText = latestFullTextRef.current || '';
+        const textToProcess = latestText || currentBuffer || '';
+
+        console.log('[PTT] Force triggering AI with available text:', { textToProcess, currentBuffer, latestText });
+
+        if (textToProcess.trim()) {
+          // Emit transcript event to trigger AI processing
+          eventBus.emit('input:transcript_updated', {
+            transcript: textToProcess.trim(),
+            pastTranscript: '',
+            currentDirective: textToProcess.trim(),
+            timestamp: Date.now()
+          });
+          console.log('[PTT] Emitted transcript_updated event for AI processing');
+        } else {
+          console.log('[PTT] No text captured during recording - check microphone permissions');
+          // Still try to process in case there's interim text or to trigger error handling
+          attemptProcessingRef.current?.('final');
+        }
+      }, 100); // Small delay to ensure speech recognition has finished
       // Optionally clear interim buffer to avoid accumulation across presses
       // Full text history still maintained in lastEmittedFullTextRef
     };
 
+    console.log('[PTT] Attaching event listeners for push-to-talk');
     window.addEventListener('keydown', onKeyDown, { capture: true });
     window.addEventListener('keyup', onKeyUp, { capture: true });
     return () => {
-      window.removeEventListener('keydown', onKeyDown, { capture: true } as EventListenerOptions);
-      window.removeEventListener('keyup', onKeyUp, { capture: true } as EventListenerOptions);
+      console.log('[PTT] Removing event listeners for push-to-talk');
+      window.removeEventListener('keydown', onKeyDown, { capture: true });
+      window.removeEventListener('keyup', onKeyUp, { capture: true });
     };
   }, [pushToTalk, start, stop]);
 
@@ -253,7 +307,11 @@ export function VoiceTaskListener({ pushToTalk = false }: { pushToTalk?: boolean
 
   const processNow = useCallback((mode: 'final' | 'stream' = 'final') => {
     const currentBuffer = bufferRef.current;
-    if (mode === 'final' && !currentBuffer) return;
+    console.log('[PTT] processNow called:', { mode, currentBuffer, latestFullText: latestFullTextRef.current });
+    if (mode === 'final' && !currentBuffer) {
+      console.log('[PTT] No current buffer, returning early');
+      return;
+    }
 
     processingRef.current = true;
     setStatus('processing');
@@ -301,14 +359,17 @@ export function VoiceTaskListener({ pushToTalk = false }: { pushToTalk?: boolean
       // Emit the entire current transcript on natural pause
       if (mode === 'final') {
         const full = (latestFullTextRef.current || currentBuffer || '').trim();
+        console.log('[PTT] Processing final transcript:', { full, currentBuffer, latestFullText: latestFullTextRef.current });
         if (full) {
           const prev = lastEmittedFullTextRef.current || '';
           const common = getCommonPrefixLength(prev, full);
           const directive = full.slice(common).trim();
+          console.log('[PTT] Calculated directive:', { directive, prev, common });
 
           if (directive) {
             const pastFull = full.slice(0, common).trim();
             const pastTranscript = pastFull.length > PAST_CONTEXT_CHARS ? pastFull.slice(-PAST_CONTEXT_CHARS) : pastFull;
+            console.log('[PTT] Emitting transcript_updated event:', { transcript: full, directive });
             eventBus.emit('input:transcript_updated', {
               transcript: full,
               pastTranscript,
@@ -316,7 +377,11 @@ export function VoiceTaskListener({ pushToTalk = false }: { pushToTalk?: boolean
               timestamp: Date.now()
             });
             lastEmittedFullTextRef.current = full;
+          } else {
+            console.log('[PTT] No directive to emit (directive is empty)');
           }
+        } else {
+          console.log('[PTT] No full transcript to process');
         }
       }
     } finally {

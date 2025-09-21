@@ -234,15 +234,25 @@ export class SpeechTranscriptionService {
   }
 
   start(): boolean {
+    console.log('[SpeechService] Start called:', {
+      hasRecognition: !!this.recognition,
+      isListening: this.isListening,
+      isStarting: this.isStarting,
+      isStopping: this.isStopping
+    });
+
     if (!this.recognition || this.isListening || this.isStarting || this.isStopping) {
+      console.log('[SpeechService] Start blocked by guard conditions');
       return false;
     }
 
     try {
+      console.log('[SpeechService] Starting speech recognition...');
       this.isStarting = true;
       // proactively request mic once if not already
       void this.prefetchMicAccess();
       this.recognition.start();
+      console.log('[SpeechService] Recognition start() called successfully');
       return true;
     } catch (error) {
       console.error('Failed to start speech recognition:', error);
@@ -253,10 +263,19 @@ export class SpeechTranscriptionService {
   }
 
   stop(): void {
+    console.log('[SpeechService] Stop called:', {
+      hasRecognition: !!this.recognition,
+      isListening: this.isListening,
+      isStarting: this.isStarting,
+      isStopping: this.isStopping
+    });
+
     if (!this.recognition || !this.isListening) {
+      console.log('[SpeechService] Stop blocked - no recognition or not listening');
       return;
     }
 
+    console.log('[SpeechService] Stopping speech recognition...');
     this.isListening = false;
     this.isStarting = false;
     this.isStopping = true;
