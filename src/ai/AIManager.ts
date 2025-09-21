@@ -46,7 +46,10 @@ export class AIManager {
             zIndex: typeof w.zIndex === 'number' ? w.zIndex : undefined,
             content: this.extractWindowContent(w),
             windowType: this.inferWindowType(w),
-            imageUrl: typeof w.imageUrl === 'string' ? w.imageUrl : undefined,
+            // Only include http(s) image URLs; never inline/base64 data URLs
+            imageUrl: (typeof w.imageUrl === 'string' && /^https?:\/\//i.test(w.imageUrl) && w.imageUrl.length < 1024)
+              ? w.imageUrl
+              : undefined,
             keywords: Array.isArray(w.keywords) ? w.keywords : undefined
           }));
         serializable.windows = cleaned;
@@ -54,7 +57,9 @@ export class AIManager {
 
       // Derive active window heuristically by highest zIndex
       if (serializable.windows && serializable.windows.length > 0) {
-        const active = [...serializable.windows].sort((a, b) => (b.zIndex ?? 0) - (a.zIndex ?? 0))[0];
+        const active = [...serializable.windows]
+          .filter(w => !this.isLargeContentWindow(w))
+          .sort((a, b) => (b.zIndex ?? 0) - (a.zIndex ?? 0))[0] || serializable.windows[0];
         serializable.activeWindowId = active?.id;
       }
 
@@ -70,31 +75,38 @@ export class AIManager {
       if (typeof window.content === 'string' && window.content.trim()) {
         const windowType = this.inferWindowType(window);
 
-        // For search results, extract key information and headlines
-        if (windowType === 'search-results' && window.content.length > 200) {
-          const lines = window.content.split('\n').filter(line => line.trim());
-          const summary = lines.slice(0, 10).join('\n');
-          return summary + (lines.length > 10 ? '\n... (content truncated)' : '');
+        // For search results, extract key information and headlines and cap size
+        if (windowType === 'search-results') {
+          const text = window.content.replace(/\s+/g, ' ').trim();
+          if (text.length > 1200) {
+            return text.slice(0, 1200) + '... (content truncated)';
+          }
+          return text;
         }
 
-        // For webview, extract the URL being viewed
+        // For webview, extract the URL being viewed and avoid embedding page contents
         if (windowType === 'webview') {
-          const urlMatch = window.content.match(/URL:\s*(.+)/);
-          const url = urlMatch ? urlMatch[1] : '';
+          // If content is a URL, include a compact tag only
+          const raw = window.content.trim();
+          const isUrl = /^https?:\/\//i.test(raw);
+          const url = isUrl ? raw : '';
           return `[Web Page] ${url ? `Viewing: ${url}` : 'Loading web content'}`;
         }
 
-        // For regular content, truncate if too long
-        return window.content.length > 500 ?
-          window.content.substring(0, 500) + '... (content truncated)' :
-          window.content;
+        // For regular content, normalize whitespace and truncate if too long
+        const normalized = window.content.replace(/\s+/g, ' ').trim();
+        return normalized.length > 800 ?
+          normalized.substring(0, 800) + '... (content truncated)' :
+          normalized;
       }
 
-      // For image windows, try to get enhanced description
+      // For image windows, try to get enhanced description (keep short)
       if (typeof window.imageUrl === 'string' && window.imageUrl) {
         const cachedDescription = imageDescriptionService.getCachedDescription(window.imageUrl);
         if (cachedDescription) {
-          return cachedDescription;
+          // Cap image description to 240 chars
+          const short = cachedDescription.replace(/\s+/g, ' ').trim();
+          return short.length > 240 ? short.slice(0, 240) + '... (truncated)' : short;
         }
         // Trigger background description generation
         const title = typeof window.title === 'string' ? window.title : 'Untitled';
@@ -107,6 +119,18 @@ export class AIManager {
       return windowType ? this.extractSpecialWindowContext(window, windowType) : undefined;
     } catch {
       return undefined;
+    }
+  }
+
+  // Identify windows that could carry very large content so we downweight them when selecting active
+  private isLargeContentWindow(w: { windowType?: string; content?: string }): boolean {
+    try {
+      const type = (w.windowType || '').toLowerCase();
+      if (type.includes('search') || type.includes('webview') || type.includes('pdf')) return true;
+      if (typeof w.content === 'string' && w.content.length > 1200) return true;
+      return false;
+    } catch {
+      return false;
     }
   }
 
@@ -161,7 +185,8 @@ export class AIManager {
         summary += `\nRecent pending:\n${recentPending}`;
       }
 
-      return summary;
+      // Cap tasks context to avoid overly long injections
+      return summary.length > 600 ? summary.slice(0, 600) + '... (truncated)' : summary;
     } catch {
       return '[Tasks] Error loading tasks';
     }
@@ -247,14 +272,19 @@ export class AIManager {
       eventBus.emit('ai:initialized');
 
       // Bridge: when input emits transcript updates, forward to worker for stateful processing
-      eventBus.on('input:transcript_updated', (data: { transcript: string }) => {
+      eventBus.on('input:transcript_updated', (data: { transcript: string; pastTranscript?: string; currentDirective?: string }) => {
         try {
           const transcript = (data?.transcript || '').trim();
           if (!transcript) return;
           eventBus.emit('ai:processing', { count: 1 });
           this.worker?.postMessage({
             type: 'PROCESS_TEXT_COMMAND',
-            data: { transcript, uiContext: this.getSerializableUIContext() }
+            data: {
+              transcript,
+              pastTranscript: typeof data?.pastTranscript === 'string' ? data.pastTranscript : undefined,
+              currentDirective: typeof data?.currentDirective === 'string' ? data.currentDirective : undefined,
+              uiContext: this.getSerializableUIContext()
+            }
           });
         } catch (e) {
           eventBus.emit('ai:error', e);

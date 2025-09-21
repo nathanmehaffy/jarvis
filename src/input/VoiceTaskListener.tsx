@@ -26,12 +26,13 @@ export function VoiceTaskListener() {
   const streamTimerRef = useRef<number | null>(null);
   const lastStreamCallAtRef = useRef<number>(0);
   const lastStreamProcessedTextRef = useRef<string>('');
+  const lastEmittedFullTextRef = useRef<string>('');
 
   // No AI calls here; VoiceTaskListener is now a pure input buffer
 
   const STREAM_INTERVAL_MS = 2000; // periodic checks during continuous speech
   const STILL_SPEAKING_WINDOW_MS = 1500; // treat activity within this as still speaking
-  const SILENCE_CONFIRM_MS = 1000; // wait after last final segment to coalesce phrases
+  const SILENCE_CONFIRM_MS = 500; // wait after last final segment to coalesce phrases (reduced for snappier response)
   const ENABLE_STREAMING = false; // disable streaming task emission to avoid partial-command actions
 
 
@@ -190,6 +191,7 @@ export function VoiceTaskListener() {
     callStartBufferLengthRef.current = currentBuffer ? currentBuffer.length : 0;
 
     const MAX_PROMPT_CHARS = 500;
+    const PAST_CONTEXT_CHARS = 2000;
     const getCommonPrefixLength = (a: string, b: string): number => {
       const minLen = Math.min(a.length, b.length);
       let i = 0;
@@ -226,9 +228,23 @@ export function VoiceTaskListener() {
     try {
       // Emit the entire current transcript on natural pause
       if (mode === 'final') {
-        const transcript = (latestFullTextRef.current || currentBuffer || '').trim();
-        if (transcript) {
-          eventBus.emit('input:transcript_updated', { transcript, timestamp: Date.now() });
+        const full = (latestFullTextRef.current || currentBuffer || '').trim();
+        if (full) {
+          const prev = lastEmittedFullTextRef.current || '';
+          const common = getCommonPrefixLength(prev, full);
+          const directive = full.slice(common).trim();
+
+          if (directive) {
+            const pastFull = full.slice(0, common).trim();
+            const pastTranscript = pastFull.length > PAST_CONTEXT_CHARS ? pastFull.slice(-PAST_CONTEXT_CHARS) : pastFull;
+            eventBus.emit('input:transcript_updated', {
+              transcript: full,
+              pastTranscript,
+              currentDirective: directive,
+              timestamp: Date.now()
+            });
+            lastEmittedFullTextRef.current = full;
+          }
         }
       }
     } finally {

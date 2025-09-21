@@ -105,8 +105,11 @@ export async function POST(request: NextRequest) {
       return new Response(JSON.stringify({ error: 'Empty response from Gemini API' }), { status: 502 });
     }
 
-    console.log('[API] /api/describe-image success', { responseLength: text.length });
-    return Response.json({ description: text });
+    // Normalize whitespace and cap response length to avoid blowing up client context
+    const normalized = String(text).replace(/\s+/g, ' ').trim();
+    const capped = normalized.length > 512 ? normalized.slice(0, 512) + '... (truncated)' : normalized;
+    console.log('[API] /api/describe-image success', { responseLength: capped.length });
+    return Response.json({ description: capped });
   } catch (error) {
     console.error('[API] /api/describe-image error', error);
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), { status: 500 });

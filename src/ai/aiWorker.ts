@@ -28,7 +28,7 @@ const state: ConversationState = {
 function updateTranscriptHistory(newTranscript: string) {
   const combined = newTranscript || '';
   // Keep more context but still limit to prevent excessive token usage
-  state.transcriptHistory = combined.length > 2000 ? combined.slice(-2000) : combined;
+  state.transcriptHistory = combined.length > 4000 ? combined.slice(-4000) : combined;
 }
 
 function appendActionRecord(record: ActionRecord) {
@@ -79,7 +79,7 @@ async function processTextCommand(data: any) {
       timestamp: new Date().toISOString()
     });
 
-    // New payload accepts { transcript, uiContext? } or string
+    // New payload accepts { transcript, pastTranscript?, currentDirective?, uiContext? } or string
     const transcript = (typeof data?.transcript === 'string') ? data.transcript : (typeof data === 'string' ? data : '');
     if (!transcript) {
       const error = 'No transcript provided';
@@ -102,6 +102,7 @@ async function processTextCommand(data: any) {
       state.uiContext = data.uiContext;
     }
 
+    // Maintain transcript history as the full text for context
     updateTranscriptHistory(transcript);
 
     console.log('📊 [AI Worker] State updated, processing transcript', {
@@ -114,12 +115,16 @@ async function processTextCommand(data: any) {
       timestamp: new Date().toISOString()
     });
 
-    // Ask parser for new tool calls based on ConversationState
+    // Ask parser for new tool calls based on split directive and past transcript
     console.log('🤖 [AI Worker] Calling taskParser.parseTextToTasks', {
       conversationState: {
         transcript: state.transcriptHistory,
         actionHistory: state.actionHistory,
         uiContext: state.uiContext
+      },
+      split: {
+        pastTranscript: typeof data?.pastTranscript === 'string' ? data.pastTranscript : undefined,
+        currentDirective: typeof data?.currentDirective === 'string' ? data.currentDirective : undefined
       },
       timestamp: new Date().toISOString()
     });
@@ -128,7 +133,9 @@ async function processTextCommand(data: any) {
     const parseResult: any = await taskParser.parseTextToTasks({
       transcript: state.transcriptHistory,
       actionHistory: state.actionHistory,
-      uiContext: state.uiContext
+      uiContext: state.uiContext,
+      pastTranscript: typeof data?.pastTranscript === 'string' ? data.pastTranscript : undefined,
+      currentDirective: typeof data?.currentDirective === 'string' ? data.currentDirective : undefined
     } as any);
     const parseEnd = Date.now();
 

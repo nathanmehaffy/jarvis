@@ -81,10 +81,11 @@ export class ImageDescriptionService {
         throw new Error('Invalid response format from describe-image API');
       }
 
-      const description = data.description.trim();
-      console.log('✅ [ImageDescriptionService] Generated description:', description);
+      const description = data.description.trim().replace(/\s+/g, ' ');
+      const capped = description.length > 240 ? description.slice(0, 240) + '... (truncated)' : description;
+      console.log('✅ [ImageDescriptionService] Generated description:', capped);
 
-      return `[Image: ${imageName || 'Untitled'}] ${description}`;
+      return `[Image: ${imageName || 'Untitled'}] ${capped}`;
     } catch (error) {
       console.error('❌ [ImageDescriptionService] Failed to generate description:', error);
       // Fallback to basic description

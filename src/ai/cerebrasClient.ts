@@ -52,6 +52,10 @@ export class CerebrasClient {
 
     if (!response.ok) {
       const errorText = await response.text();
+      // Common upstream limits manifest as 4xx/5xx; surface a concise message
+      if (response.status === 413) {
+        throw new Error('Request too large (413). Context was trimmed insufficiently.');
+      }
       throw new Error(`Internal API error (${response.status}): ${errorText}`);
     }
 
