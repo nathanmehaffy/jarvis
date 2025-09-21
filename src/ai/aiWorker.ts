@@ -95,14 +95,56 @@ async function processTextCommand(data: any) {
       }
     });
 
-    // Ask parser for new tool calls based on ConversationState
-    const parseResult: any = await taskParser.parseTextToTasks({
-      transcript: state.transcriptHistory,
-      actionHistory: state.actionHistory,
-      uiContext: state.uiContext
-    } as any);
+    // Check for search commands FIRST
+    const searchPattern = /\b(search|look up|find information|google|bing)\b/i;
+    const isSearchCommand = searchPattern.test(transcript);
 
-    const newCalls: Array<{ tool: string; parameters: any; sourceText: string }> = Array.isArray(parseResult?.new_tool_calls) ? parseResult.new_tool_calls : [];
+    // Check for "open first/second/third link" patterns
+    const openLinkPattern = /\b(open|read|show|load|click)\s+(the\s+)?(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th)\s+(link|result|one|article)/i;
+    const openMatch = transcript.match(openLinkPattern);
+
+    let newCalls: Array<{ tool: string; parameters: any; sourceText: string }> = [];
+
+    if (!isSearchCommand && openMatch) {
+      // Handle "open first link" type commands directly
+      const indexMap: Record<string, number> = {
+        'first': 1, '1st': 1,
+        'second': 2, '2nd': 2,
+        'third': 3, '3rd': 3,
+        'fourth': 4, '4th': 4,
+        'fifth': 5, '5th': 5
+      };
+      const word = openMatch[3].toLowerCase();
+      const index = indexMap[word] || 1;
+
+      console.log('[AI Worker] Detected open link command:', { match: openMatch[0], index });
+
+      newCalls = [{
+        tool: 'open_search_result',
+        parameters: { index },
+        sourceText: transcript
+      }];
+    } else {
+      console.log('[AI Worker] Sending to parser:', {
+        isSearch: isSearchCommand,
+        transcript: transcript,
+        historyLength: state.actionHistory.length
+      });
+
+      // Ask parser for new tool calls based on ConversationState
+      const parseResult: any = await taskParser.parseTextToTasks({
+        transcript: state.transcriptHistory,
+        actionHistory: state.actionHistory,
+        uiContext: state.uiContext
+      } as any);
+
+      newCalls = Array.isArray(parseResult?.new_tool_calls) ? parseResult.new_tool_calls : [];
+
+      console.log('[AI Worker] Parser returned:', {
+        callsCount: newCalls.length,
+        calls: newCalls
+      });
+    }
 
     const executionResults: any[] = [];
     for (const call of newCalls) {

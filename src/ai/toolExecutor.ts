@@ -258,7 +258,7 @@ export class ToolExecutor {
 
 
   private async executeWebSearch(task: Task): Promise<ExecutionResult> {
-    const params = task.parameters as WebSearchParams;
+    const params = task.parameters as unknown as WebSearchParams;
     eventBus.emit('ai:tool_call_started', { task, tool: 'web_search', params });
 
     try {
@@ -312,7 +312,7 @@ export class ToolExecutor {
 
       // Generate window content based on display mode
       let windowContent = '';
-      let windowTitle = `Search: ${params.query}`;
+      const windowTitle = `Search: ${params.query}`;
 
       if (finalDisplayMode === 'summary' && searchResults[0]) {
         const result = searchResults[0];
@@ -356,6 +356,17 @@ Found ${searchResults.length} result${searchResults.length === 1 ? '' : 's'}`;
         },
         timestamp: Date.now()
       };
+
+      // Register the search window for later reference
+      windowRegistry.register({
+        id: windowId,
+        type: 'search-results',
+        title: windowTitle,
+        content: windowContent,
+        context: windowData.context,
+        meta: windowData,
+        createdAt: Date.now()
+      });
 
       // Emit to event bus for UI to handle
       eventBus.emit('ui:open_window', windowData);
@@ -445,6 +456,17 @@ Found ${searchResults.length} result${searchResults.length === 1 ? '' : 's'}`;
       timestamp: Date.now()
     };
 
+    // Register the webview window for later reference
+    windowRegistry.register({
+      id: windowId,
+      type: 'webview',
+      title: params.title || params.url,
+      content: '',
+      context: windowData.context,
+      meta: windowData,
+      createdAt: Date.now()
+    });
+
     eventBus.emit('ui:open_window', windowData);
     eventBus.emit('window:opened', windowData);
 
@@ -466,7 +488,7 @@ Found ${searchResults.length} result${searchResults.length === 1 ? '' : 's'}`;
   }
 
   private async executeSummarizeArticle(task: Task): Promise<ExecutionResult> {
-    const params = task.parameters as SummarizeArticleParams;
+    const params = task.parameters as unknown as SummarizeArticleParams;
     eventBus.emit('ai:tool_call_started', { task, tool: 'summarize_article', params });
 
     if (!params.url) throw new Error('summarize_article requires url');
@@ -578,7 +600,7 @@ Found ${searchResults.length} result${searchResults.length === 1 ? '' : 's'}`;
   }
 
   private async executeCreateTask(task: Task): Promise<ExecutionResult> {
-    const params = task.parameters as CreateTaskParams;
+    const params = task.parameters as unknown as CreateTaskParams;
     eventBus.emit('ai:tool_call_started', { task, tool: 'create_task', params });
     if (!params.title) throw new Error('create_task requires title');
     const id = `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -607,7 +629,7 @@ Found ${searchResults.length} result${searchResults.length === 1 ? '' : 's'}`;
   }
 
   private async executeSetReminder(task: Task): Promise<ExecutionResult> {
-    const params = task.parameters as SetReminderParams;
+    const params = task.parameters as unknown as SetReminderParams;
     eventBus.emit('ai:tool_call_started', { task, tool: 'set_reminder', params });
     if (!params.message || !params.time) throw new Error('set_reminder requires message and time');
     // Client-side scheduling (in this process) using setTimeout; parse simple phrases
@@ -640,7 +662,7 @@ Found ${searchResults.length} result${searchResults.length === 1 ? '' : 's'}`;
   }
 
   private async executeGetWeather(task: Task): Promise<ExecutionResult> {
-    const params = task.parameters as WeatherParams;
+    const params = task.parameters as unknown as WeatherParams;
     eventBus.emit('ai:tool_call_started', { task, tool: 'get_weather', params });
     
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
@@ -688,7 +710,7 @@ ${w.today.forecast}
   }
 
   private async executeGetNews(task: Task): Promise<ExecutionResult> {
-    const params = task.parameters as NewsParams;
+    const params = task.parameters as unknown as NewsParams;
     eventBus.emit('ai:tool_call_started', { task, tool: 'get_news', params });
     
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
@@ -733,7 +755,7 @@ ${w.today.forecast}
   }
 
   private async executeGetStocks(task: Task): Promise<ExecutionResult> {
-    const params = task.parameters as StocksParams;
+    const params = task.parameters as unknown as StocksParams;
     eventBus.emit('ai:tool_call_started', { task, tool: 'get_stocks', params });
     
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
@@ -785,6 +807,8 @@ ${s.analysis ? `📝 Analysis:\n${s.analysis}` : ''}`;
     const params = task.parameters as { index?: number; url?: string; title?: string };
     eventBus.emit('ai:tool_call_started', { task, tool: 'open_search_result', params });
 
+    console.log('[ToolExecutor] executeOpenSearchResult called with params:', params);
+
     const decodeDdg = (u: string) => {
       const m = u.match(/uddg=([^&]+)/);
       if (m) {
@@ -795,6 +819,7 @@ ${s.analysis ? `📝 Analysis:\n${s.analysis}` : ''}`;
 
     const openUrl = params.url ? decodeDdg(params.url) : undefined;
     if (openUrl && typeof openUrl === 'string') {
+      console.log('[ToolExecutor] Opening URL directly:', openUrl);
       return this.executeOpenWebView({
         ...task,
         tool: 'open_webview',
@@ -805,26 +830,47 @@ ${s.analysis ? `📝 Analysis:\n${s.analysis}` : ''}`;
     // If no URL given, try to open from the last search-results window's stored metadata first,
     // falling back to parsing links from content if needed.
     try {
-      const reg: any = windowRegistry as any;
-      const all = reg.getAll ? reg.getAll() : [];
+      const all = windowRegistry.getAll();
+      console.log('[ToolExecutor] All registered windows:', all.map(w => ({ id: w.id, type: w.type, title: w.title })));
+
       const lastSearch = [...all].reverse().find((w: any) => w?.type === 'search-results');
-      if (!lastSearch) throw new Error('No recent search results found');
+      if (!lastSearch) {
+        console.log('[ToolExecutor] No search results window found in registry');
+        throw new Error('No recent search results found');
+      }
+
+      console.log('[ToolExecutor] Found search window:', {
+        id: lastSearch.id,
+        title: lastSearch.title,
+        hasMetadata: !!lastSearch?.meta?.context?.metadata,
+        resultsCount: lastSearch?.meta?.context?.metadata?.results?.length || 0
+      });
 
       const idx = Math.max(1, params.index || 1) - 1;
       // Prefer structured results stored in window context metadata
       const structured: any[] = lastSearch?.meta?.context?.metadata?.results || [];
       let url: string | undefined;
+
       if (Array.isArray(structured) && structured[idx] && typeof structured[idx].url === 'string') {
         url = decodeDdg(structured[idx].url);
+        console.log('[ToolExecutor] Found URL from structured results:', url);
       }
+
       // Fallback: parse from rendered content
       if (!url) {
+        console.log('[ToolExecutor] No structured results, parsing from content');
         const content: string = (lastSearch?.content || (lastSearch?.meta?.content || '')) as string;
         const urls = Array.from(content.matchAll(/https?:\/\/[^\s\)]+/g)).map(m => decodeDdg(m[0]));
+        console.log('[ToolExecutor] Found URLs in content:', urls);
         url = urls[idx];
       }
-      if (!url) throw new Error('Requested result not found');
 
+      if (!url) {
+        console.log('[ToolExecutor] No URL found at index:', idx + 1);
+        throw new Error('Requested result not found');
+      }
+
+      console.log('[ToolExecutor] Opening search result URL:', url);
       return this.executeOpenWebView({
         ...task,
         tool: 'open_webview',
@@ -832,6 +878,7 @@ ${s.analysis ? `📝 Analysis:\n${s.analysis}` : ''}`;
       });
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
+      console.error('[ToolExecutor] Failed to open search result:', errorMsg);
       eventBus.emit('ai:tool_call_failed', { task, tool: 'open_search_result', error: errorMsg });
       return { taskId: task.id, success: false, error: errorMsg, timestamp: Date.now() };
     }
@@ -839,7 +886,7 @@ ${s.analysis ? `📝 Analysis:\n${s.analysis}` : ''}`;
 
 
   private async executeCreateGroup(task: Task): Promise<ExecutionResult> {
-    const params = task.parameters as CreateGroupParams;
+    const params = task.parameters as unknown as CreateGroupParams;
     eventBus.emit('ai:tool_call_started', { task, tool: 'create_group', params });
 
     try {
@@ -882,7 +929,7 @@ ${s.analysis ? `📝 Analysis:\n${s.analysis}` : ''}`;
   }
 
   private async executeAssignGroup(task: Task): Promise<ExecutionResult> {
-    const params = task.parameters as AssignGroupParams;
+    const params = task.parameters as unknown as AssignGroupParams;
     eventBus.emit('ai:tool_call_started', { task, tool: 'assign_group', params });
 
     try {
@@ -969,7 +1016,7 @@ ${s.analysis ? `📝 Analysis:\n${s.analysis}` : ''}`;
   }
 
   private generateWindowId(): string {
-    return `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `window_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   private async executeEditWindow(task: Task): Promise<ExecutionResult> {

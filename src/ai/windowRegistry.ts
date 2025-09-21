@@ -3,8 +3,8 @@ interface WindowMeta {
   type?: string;
   title?: string;
   content?: string;
-  context?: unknown;
-  meta?: unknown;
+  context?: any;
+  meta?: any;
   createdAt?: number;
   zIndex?: number;
   isMinimized?: boolean;
