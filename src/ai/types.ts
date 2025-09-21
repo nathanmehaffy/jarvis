@@ -43,9 +43,24 @@ export interface OpenWindowParams {
   context: WindowContext;
 }
 
+export interface OpenWebviewParams {
+  url: string;
+  title?: string;
+  width?: number;
+  height?: number;
+}
+
 export interface CloseWindowParams {
   windowId?: string; // direct id when known
   selector?: 'newest' | 'latest' | 'oldest' | 'active' | 'all'; // semantic selector
+}
+
+export interface EditWindowParams {
+  windowId?: string;
+  selector?: 'newest' | 'active' | 'oldest';
+  title?: string;
+  content?: string;
+  mode?: 'set' | 'append' | 'prepend' | 'clear';
 }
 
 export interface CerebrasRequest {
@@ -87,6 +102,69 @@ export interface CerebrasResponse {
     completion_tokens: number;
     total_tokens: number;
   };
+}
+
+
+
+export interface CreateGroupParams {
+  name: string;
+  color: string;
+}
+
+export interface AssignGroupParams {
+  windowId?: string;
+  groupName: string;
+  selector?: 'newest' | 'active' | 'all';
+}
+
+export interface WebSearchParams {
+  query: string;
+  resultCount?: number;
+  displayMode?: 'summary' | 'links' | 'full' | 'auto';
+}
+
+export interface SummarizeArticleParams {
+  url: string;
+  windowId?: string;
+  maxBullets?: number;
+}
+
+export interface AnalyzeImageParams {
+  imageUrl?: string;
+  imageBase64?: string;
+  mimeType?: string;
+  prompt?: string;
+}
+
+export interface AnalyzePdfParams {
+  url?: string;
+  prompt?: string;
+}
+
+export interface CreateTaskParams {
+  title: string;
+  due?: string;
+  notes?: string;
+}
+
+export interface ViewTasksParams {
+  filter?: 'all' | 'due' | 'overdue' | 'completed' | 'pending';
+}
+
+export interface SetReminderParams {
+  message: string;
+  time: string; // ISO or natural language parsed client-side
+}
+
+export interface WeatherParams { location: string }
+export interface NewsParams { query: string; pageSize?: number }
+export interface StocksParams { symbol: string }
+
+export interface SearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+  content?: string;
 }
 
 export interface AIProcessingResult {

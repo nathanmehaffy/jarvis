@@ -220,7 +220,7 @@ export function VoiceTaskListener() {
     const now = Date.now();
     const recent = cleanOld(apiCallTimestampsRef.current);
 
-    if (recent.length >= 30) {
+    if (recent.length >= 20) {
       const wait = 60000 - (now - recent[0]);
       if (wait > 0) {
         if (mode === 'final') {

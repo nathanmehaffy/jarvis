@@ -2,7 +2,7 @@
 
 import { useEffect, useState, forwardRef, useImperativeHandle, useRef } from 'react';
 import { Window } from '../window';
-import { WindowData, WindowManagerState } from './windowManager.types';
+import { WindowData, WindowManagerState, WindowGroup } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
 // import { contentSimilarityAnalyzer } from '@/lib/contentSimilarity';
 
@@ -12,6 +12,8 @@ interface WindowManagerProps {
 }
 
 export interface WindowManagerRef {
+  createGroup: (name: string, color: string) => void;
+  assignWindowToGroup: (windowId: string, groupName: string) => void;
   openWindow: (windowData: Omit<WindowData, 'isOpen' | 'zIndex'>) => void;
   closeWindow: (windowId: string) => void;
   minimizeWindow: (windowId: string) => void;
@@ -22,6 +24,7 @@ export interface WindowManagerRef {
 }
 
 export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(function WindowManager({ children, onWindowsChange }, ref) {
+  const [groups, setGroups] = useState<Record<string, WindowGroup>>({});
   const [state, setState] = useState<WindowManagerState>({
     windows: [],
     activeWindowId: null,
@@ -538,7 +541,29 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
 
   // Connections feature removed per decision
 
+  
+  const createGroup = (name: string, color: string) => {
+    setGroups(prev => ({
+      ...prev,
+      [name.toLowerCase()]: { name, color }
+    }));
+  };
+
+  const assignWindowToGroup = (windowId: string, groupName: string) => {
+    const group = groups[groupName.toLowerCase()];
+    if (!group) return;
+    
+    setState(prev => ({
+      ...prev,
+      windows: prev.windows.map(w =>
+        w.id === windowId ? { ...w, group } : w
+      )
+    }));
+  };
+
   useImperativeHandle(ref, () => ({
+    createGroup,
+    assignWindowToGroup,
     openWindow,
     closeWindow,
     minimizeWindow,
@@ -590,25 +615,256 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
 
   useEffect(() => {
     const unsubs = [
-      eventBus.on('ui:open_window', (data: { id?: string; title?: string; content?: string; position?: { x?: number; y?: number }; size?: { width?: number; height?: number } }) => {
+      eventBus.on('window:create_group', (data: any) => {
+        if (data?.name && data?.color) {
+          createGroup(data.name, data.color);
+        }
+      }),
+      eventBus.on('window:assign_group', (data: any) => {
+        if (data?.windowId && data?.groupName) {
+          assignWindowToGroup(data.windowId, data.groupName);
+        }
+      }),
+      eventBus.on('ui:open_window', (data: any) => {
+  console.log(`[WindowManager] ui:open_window:`, data);
         const id = data?.id || `win_${Date.now()}`;
-        const title = data?.title || 'Window';
+        const inferTitle = (): string => {
+          const provided = String(data?.title || '');
+          const current = provided || 'General';
+          const ctxType = String(data?.type || data?.context?.type || '').toLowerCase();
+          const contentText = String(data?.content || data?.context?.content || '');
+          const meta = (data?.context && (data.context as any).metadata) || {};
+          const isGeneric = !provided || /untitled/i.test(provided) || provided === 'General';
+          if (!isGeneric) return current;
+          if (ctxType === 'search-results' && typeof meta.searchQuery === 'string' && meta.searchQuery.length > 0) {
+            return `Search: ${meta.searchQuery}`;
+          }
+          const sum = contentText.match(/Summary of:\s*([^\n]+)/i);
+          if (ctxType === 'notes' || sum) {
+            if (sum && sum[1]) return `Summary: ${sum[1].trim().slice(0, 60)}`;
+            return 'Summary';
+          }
+          if (/(theorem|lemma|proof|integral|derivative|matrix|vector|algebra|calculus|trigonometry)\b/i.test(contentText) || /[=+\-*/^]/.test(contentText)) {
+            return 'Math';
+          }
+          return current;
+        };
+        const title = inferTitle();
+        const urlForWebview = data?.context?.metadata?.url || data?.url;
         openWindow({
           id,
           title,
+          component: (props?: any) => {
+            if (urlForWebview && urlForWebview !== 'null' && urlForWebview !== 'undefined') {
+              const { useEffect, useState } = require('react');
+              const [reader, setReader] = useState<any | null>(null);
+              const [loadError, setLoadError] = useState<string | null>(null);
+              const [iframeBlocked, setIframeBlocked] = useState(false);
+              const [iframeLoaded, setIframeLoaded] = useState(false);
+              const [useProxy, setUseProxy] = useState(false);
+              const [proxyUrl, setProxyUrl] = useState<string | null>(null);
+              const [preflightDone, setPreflightDone] = useState(false);
+
+              const fetchReader = async () => {
+                try {
+                  console.log(`[WindowManager] Fetching reader for: ${urlForWebview}`);
+                  const resp = await fetch('/api/fetch-article', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: String(urlForWebview) })
+                  });
+                  if (!resp.ok) throw new Error(`Reader HTTP ${resp.status}`);
+                  const data = await resp.json();
+                  setReader(data);
+                } catch (e) {
+                  const msg = e instanceof Error ? e.message : String(e);
+                  console.error(`[WindowManager] Reader fetch failed:`, msg);
+                  setLoadError(msg);
+                }
+              };
+
+              const testProxy = async () => {
+                try {
+                  const testUrl = `/api/proxy-page?url=${encodeURIComponent(String(urlForWebview))}`;
+                  console.log(`[WindowManager] Testing proxy for: ${urlForWebview}`);
+                  const resp = await fetch(testUrl, { method: 'GET' });
+                  if (resp.ok) {
+                    setProxyUrl(testUrl);
+                    setUseProxy(true);
+                  } else {
+                    console.warn(`[WindowManager] Proxy returned HTTP ${resp.status}, falling back to reader`);
+                    fetchReader();
+                  }
+                } catch (e) {
+                  console.warn(`[WindowManager] Proxy test failed, falling back to reader`);
+                  fetchReader();
+                }
+              };
+
+              const preflight = async () => {
+                try {
+                  const resp = await fetch('/api/fetch-article', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: String(urlForWebview), mode: 'head' })
+                  });
+                  if (resp.ok) {
+                    const head = await resp.json();
+                    if (head?.embeddingBlocked) {
+                      console.log(`[WindowManager] Preflight indicates iframe blocked for: ${urlForWebview}`);
+                      setIframeBlocked(true);
+                      testProxy();
+                    }
+                  }
+                } catch {}
+                setPreflightDone(true);
+              };
+
+              useEffect(() => {
+                preflight();
+              }, []);
+
+              useEffect(() => {
+                // Auto-fallback after 3s: try proxy first, then reader
+                const timer = setTimeout(() => {
+                  if (!reader && !loadError && !iframeBlocked && !iframeLoaded) {
+                    console.log(`[WindowManager] Auto-fallback: trying proxy for ${urlForWebview}`);
+                    setIframeBlocked(true);
+                    testProxy();
+                  }
+                }, 3000);
+                return () => clearTimeout(timer);
+              }, [reader, loadError, iframeBlocked, iframeLoaded]);
+
+              useEffect(() => {
+                if (reader && reader.textContent) {
+                  try { 
+                    eventBus.emit('window:content_ready', { windowId: id, url: String(urlForWebview), title: reader.title, text: reader.textContent }); 
+                    // Update window header title to the article's title when reader loads
+                    if (reader.title && typeof reader.title === 'string' && reader.title.length > 0) {
+                      eventBus.emit('ui:update_window', { windowId: id, title: reader.title });
+                    }
+                  } catch {}
+                }
+              }, [reader]);
+
+              if (!preflightDone) {
+                return (
+                  <div className="w-full h-full flex items-center justify-center text-xs text-gray-600">
+                    Loading...
+                  </div>
+                );
+              } else if (reader) {
+                return (
+                  <div className="w-full h-full overflow-auto p-4 text-sm text-gray-800">
+                    <div className="mb-2 text-xs text-gray-500">Reader view</div>
+                    <div className="text-lg font-semibold">{reader.title || title}</div>
+                    {reader.byline ? <div className="text-xs text-gray-500 mb-3">{reader.byline}</div> : null}
+                    <div className="whitespace-pre-wrap">{reader.textContent || ''}</div>
+                    <div className="mt-4 pt-2 border-t border-gray-200">
+                      <a href={String(urlForWebview)} target="_blank" rel="noopener noreferrer" 
+                         className="text-blue-600 hover:text-blue-800 text-xs">
+                        Open in new tab →
+                      </a>
+                    </div>
+                  </div>
+                );
+              } else if (useProxy && proxyUrl) {
+                return (
+                  <iframe
+                    src={proxyUrl}
+                    className="w-full h-full border-0"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                    referrerPolicy="no-referrer"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    loading="lazy"
+                    onLoad={() => { console.log(`[WindowManager] Proxy webview loaded: ${proxyUrl}`); setIframeLoaded(true); }}
+                    onError={() => { 
+                      console.error(`[WindowManager] Proxy webview error for ${proxyUrl}`); 
+                      setUseProxy(false);
+                      fetchReader();
+                    }}
+                  />
+                );
+              } else if (iframeBlocked || loadError) {
+                return (
+                  <div className="w-full h-full flex items-center justify-center p-4">
+                    <div className="text-center text-gray-600">
+                      <div className="mb-2">
+                        {loadError ? `Reader error: ${loadError}` : 'Website blocked iframe embedding'}
+                      </div>
+                      <a href={String(urlForWebview)} target="_blank" rel="noopener noreferrer" 
+                         className="text-blue-600 hover:text-blue-800">
+                        Open in new tab →
+                      </a>
+                    </div>
+                  </div>
+                );
+              } else {
+                return (
+                  <iframe
+                    src={String(urlForWebview)}
+                    className="w-full h-full border-0"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                    referrerPolicy="no-referrer"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    loading="lazy"
+                    onLoad={() => { console.log(`[WindowManager] Webview loaded: ${urlForWebview}`); setIframeLoaded(true); }}
+                    onError={() => { 
+                      console.error(`[WindowManager] Webview error for ${urlForWebview}`); 
+                      setIframeBlocked(true);
+                      testProxy();
+                    }}
+                  />
+                );
+              }
+            } else {
+              const content = typeof props?.content === 'string' ? props.content : String(data?.content || '');
+              return (
+                <div className="p-4 text-gray-800 text-sm whitespace-pre-wrap">{content}</div>
+              );
+            }
+          },
           content: String(data?.content || ''),
-          component: () => (
-            <div className="p-4 text-cyan-200 text-sm whitespace-pre-wrap">{String(data?.content || '')}</div>
-          ),
-          isMinimized: false,
-          isFullscreen: false,
-          x: 0,
-          y: 0,
-          width: data?.size?.width ?? 500,
-          height: data?.size?.height ?? 400
+          group: data?.group && typeof data.group === 'object' ? { name: String(data.group.name || ''), color: String(data.group.color || '#6b7280') } as WindowGroup : undefined,
+          x: data?.position?.x ?? 120,
+          y: data?.position?.y ?? 120,
+          width: data?.size?.width ?? 360,
+          height: data?.size?.height ?? 240
         });
       }),
-      eventBus.on('ui:close_window', (data: { windowId?: string }) => {
+      eventBus.on('ui:update_window', (data: any) => {
+        const { windowId, title, contentUpdate } = data || {};
+        if (!windowId) return;
+        setState(prev => ({
+          ...prev,
+          windows: prev.windows.map(w => {
+            if (w.id !== windowId) return w;
+            let newContent = String(w.content || '');
+            if (contentUpdate) {
+              const mode = String(contentUpdate.mode || 'set');
+              const text = String(contentUpdate.text || '');
+              if (mode === 'set') newContent = text;
+              else if (mode === 'append') newContent = (newContent ? newContent + '\n' : '') + text;
+              else if (mode === 'prepend') newContent = text + (newContent ? '\n' + newContent : '');
+              else if (mode === 'clear') newContent = '';
+            }
+            return { ...w, title: typeof title === 'string' && title.length > 0 ? title : w.title, content: newContent };
+          })
+        }));
+      }),
+      // Simple tasks persistence: create/list
+      eventBus.on('tasks:create', (data: any) => {
+        try {
+          const ls = typeof window !== 'undefined' ? window.localStorage : null;
+          if (!ls) return;
+          const raw = ls.getItem('jarvis.tasks') || '[]';
+          const items = JSON.parse(raw);
+          items.push({ id: data?.id, title: data?.title, due: data?.due || null, notes: data?.notes || '', done: false, createdAt: Date.now() });
+          ls.setItem('jarvis.tasks', JSON.stringify(items));
+        } catch {}
+      }),
+      eventBus.on('ui:close_window', (data: any) => {
         if (data?.windowId) {
           closeWindow(data.windowId);
         }

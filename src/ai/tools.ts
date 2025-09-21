@@ -55,6 +55,110 @@ export const AVAILABLE_TOOLS: Tool[] = [
     }
   },
   {
+    name: 'analyze_image',
+    description: 'Analyzes an image with Gemini vision to describe/ocr. Provide file URL/base64.',
+    parameters: {
+      type: 'object',
+      properties: {
+        imageUrl: { type: 'string', description: 'Public/temporary URL to image' },
+        imageBase64: { type: 'string', description: 'Base64-encoded image (data URL ok)' },
+        mimeType: { type: 'string', description: 'Image MIME type if using base64' },
+        prompt: { type: 'string', description: 'Optional analysis prompt' }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'analyze_pdf',
+    description: 'Parses a PDF and summarizes with Gemini. Provide url or upload.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'PDF URL' },
+        prompt: { type: 'string', description: 'Optional prompt context' }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'create_task',
+    description: 'Creates a task with optional due date/time and notes.',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Task title' },
+        due: { type: 'string', description: 'Due date/time (natural language ok)' },
+        notes: { type: 'string', description: 'Optional details' }
+      },
+      required: ['title']
+    }
+  },
+  {
+    name: 'view_tasks',
+    description: 'Displays current tasks, filtered optionally by status or due.',
+    parameters: {
+      type: 'object',
+      properties: {
+        filter: { type: 'string', description: 'all|due|overdue|completed|pending' }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'set_reminder',
+    description: 'Schedules a notification window at a time or after a delay.',
+    parameters: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: 'Reminder message' },
+        time: { type: 'string', description: 'When to remind (e.g., 2025-09-20T18:45, in 10 minutes)' }
+      },
+      required: ['message', 'time']
+    }
+  },
+  {
+    name: 'get_weather',
+    description: 'Gets weather by city/location.',
+    parameters: {
+      type: 'object',
+      properties: { location: { type: 'string', description: 'City or location name' } },
+      required: ['location']
+    }
+  },
+  {
+    name: 'get_news',
+    description: 'Gets recent news for a topic.',
+    parameters: {
+      type: 'object',
+      properties: { query: { type: 'string', description: 'Topic or search phrase' }, pageSize: { type: 'number', description: 'Number of articles (1-10)' } },
+      required: ['query']
+    }
+  },
+  {
+    name: 'get_stocks',
+    description: 'Gets daily stock time series.',
+    parameters: {
+      type: 'object',
+      properties: { symbol: { type: 'string', description: 'Ticker symbol (e.g., AAPL)' } },
+      required: ['symbol']
+    }
+  },
+  {
+    name: 'edit_window',
+    description: 'Edits an existing window: rename title, set/append/prepend/clear content.',
+    parameters: {
+      type: 'object',
+      properties: {
+        windowId: { type: 'string', description: 'Target window id (optional if selector used)' },
+        selector: { type: 'string', description: 'newest | active | oldest' },
+        title: { type: 'string', description: 'New title (omit to keep current)' },
+        content: { type: 'string', description: 'Text to set/append/prepend' },
+        mode: { type: 'string', description: 'set | append | prepend | clear', enum: ['set','append','prepend','clear'] }
+      },
+      required: []
+    }
+  },
+  {
     name: 'close_window',
     description: 'Closes an existing window by its ID. Use this when the user wants to close, dismiss, or hide a specific window.',
     parameters: {
@@ -70,6 +174,109 @@ export const AVAILABLE_TOOLS: Tool[] = [
         }
       },
       required: []
+    }
+  },
+  {
+    name: 'web_search',
+    description: 'Performs web search using Gemini with grounding and displays results in a window. Use this when user wants to search for information online.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The search query to look up'
+        },
+        resultCount: {
+          type: 'number',
+          description: 'Number of results to return (1-10, default 5)'
+        },
+        displayMode: {
+          type: 'string',
+          description: 'How to display results: summary (single result with summary), links (multiple results with titles/links), full (single result with full content)',
+          enum: ['summary', 'links', 'full', 'auto']
+        }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'create_group',
+    description: 'Creates a new window group with a name and color for organizing windows',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Name of the group (e.g., Research, Work, Personal)'
+        },
+        color: {
+          type: 'string',
+          description: 'Color for the group banner (e.g., purple, blue, red, green, orange)'
+        }
+      },
+      required: ['name', 'color']
+    }
+  },
+  {
+    name: 'assign_group',
+    description: 'Assigns a window to a group or moves the current/newest window to a group',
+    parameters: {
+      type: 'object',
+      properties: {
+        windowId: {
+          type: 'string',
+          description: 'ID of the window to assign (optional, defaults to newest)'
+        },
+        groupName: {
+          type: 'string',
+          description: 'Name of the group to assign the window to'
+        },
+        selector: {
+          type: 'string',
+          description: 'Window selector if ID not provided (newest, active, all)'
+        }
+      },
+      required: ['groupName']
+    }
+  },
+  {
+    name: 'open_webview',
+    description: 'Opens a sandboxed webview (iframe) to display a URL inside a window.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'URL to load in the webview' },
+        title: { type: 'string', description: 'Optional window title' },
+        width: { type: 'number', description: 'Optional window width in px' },
+        height: { type: 'number', description: 'Optional window height in px' }
+      },
+      required: ['url']
+    }
+  },
+  {
+    name: 'open_search_result',
+    description: 'Opens one of the last shown search results in a webview (supports "first/second/N").',
+    parameters: {
+      type: 'object',
+      properties: {
+        index: { type: 'number', description: '1-based index of the result to open (default 1)' },
+        url: { type: 'string', description: 'Direct URL to open (overrides index lookup)' },
+        title: { type: 'string', description: 'Optional window title' }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'summarize_article',
+    description: 'Reads the given URL server-side and generates a concise bullet summary and notes.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Article URL to read (will use reader mode)' },
+        windowId: { type: 'string', description: 'Optional target window id for notes; default opens new' },
+        maxBullets: { type: 'number', description: 'Max bullets in summary (default 8)' }
+      },
+      required: ['url']
     }
   }
 ];
