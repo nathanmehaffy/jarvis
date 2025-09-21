@@ -107,6 +107,9 @@ export class ToolExecutor {
         case 'show_integral_visual':
           result = await this.executeShowIntegralVisual(task);
           break;
+        case 'start_adaptive_quiz':
+          result = await this.executeStartAdaptiveQuiz(task);
+          break;
         default:
           console.error('⚠️ [ToolExecutor] Unknown tool requested', { tool: task.tool });
           throw new Error(`Unknown tool: ${task.tool}`);
@@ -586,6 +589,38 @@ export class ToolExecutor {
       timestamp: Date.now()
     };
     eventBus.emit('ai:tool_call_completed', { task, tool: 'show_integral_visual', result });
+    return result;
+  }
+
+  private async executeStartAdaptiveQuiz(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as any;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'start_adaptive_quiz', params });
+
+    const windowId = this.generateWindowId();
+    const windowData = {
+      id: windowId,
+      type: 'adaptive-quiz',
+      title: `Adaptive Quiz: ${String(params?.topic || 'addition')}`,
+      topic: String(params?.topic || 'addition'),
+      position: { x: 140, y: 140 },
+      size: { width: 700, height: 480 },
+      timestamp: Date.now()
+    } as any;
+
+    eventBus.emit('ui:open_window', windowData);
+    try {
+      if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
+        (self as any).postMessage({ type: 'UI_OPEN_WINDOW', data: windowData });
+      }
+    } catch (_) {}
+
+    const result = {
+      taskId: task.id,
+      success: true,
+      result: { windowId, type: 'adaptive-quiz' },
+      timestamp: Date.now()
+    };
+    eventBus.emit('ai:tool_call_completed', { task, tool: 'start_adaptive_quiz', result });
     return result;
   }
 
