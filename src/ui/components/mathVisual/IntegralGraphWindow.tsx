@@ -54,7 +54,7 @@ export function IntegralGraphWindow({
 
   const integralLatex = useMemo(() => {
     const escaped = expression.replace(/\*/g, '\\cdot ');
-    return `\\[ \\int_{${lower}}^{${upper}} ${escaped}\\, d${variable} \\]`;
+    return `$$\\int_{${lower}}^{${upper}} ${escaped} \\, d${variable}$$`;
   }, [expression, variable, lower, upper]);
 
   const approx = useMemo(() => {

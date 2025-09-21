@@ -123,6 +123,55 @@ export const AVAILABLE_TOOLS: Tool[] = [
     }
   },
   {
+    name: 'create_category',
+    description: 'Create a UI category (group) to organize windows.',
+    parameters: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'Category name' } },
+      required: ['name']
+    }
+  },
+  {
+    name: 'assign_window_to_category',
+    description: 'Assign a window to a category by id or title match.',
+    parameters: {
+      type: 'object',
+      properties: {
+        windowId: { type: 'string' },
+        titleMatch: { type: 'string' },
+        category: { type: 'string' }
+      },
+      required: ['category']
+    }
+  },
+  {
+    name: 'collapse_category',
+    description: 'Collapse all windows within a category.',
+    parameters: {
+      type: 'object',
+      properties: { name: { type: 'string' } },
+      required: ['name']
+    }
+  },
+  {
+    name: 'expand_category',
+    description: 'Expand all windows within a category.',
+    parameters: {
+      type: 'object',
+      properties: { name: { type: 'string' } },
+      required: ['name']
+    }
+  },
+  {
+    name: 'organize_category',
+    description: 'Organize positions of windows within a category.',
+    parameters: {
+      type: 'object',
+      properties: { name: { type: 'string' } },
+      required: ['name']
+    }
+  },
+  {
     name: 'search',
     description: 'Performs a web-grounded search using AI and displays results in a new window. Use for queries like "search for [topic]" or "find information about [subject]".',
     parameters: {

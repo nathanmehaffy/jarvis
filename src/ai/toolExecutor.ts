@@ -110,6 +110,21 @@ export class ToolExecutor {
         case 'start_adaptive_quiz':
           result = await this.executeStartAdaptiveQuiz(task);
           break;
+        case 'create_category':
+          result = await this.executeCreateCategory(task);
+          break;
+        case 'assign_window_to_category':
+          result = await this.executeAssignWindowToCategory(task, uiContext);
+          break;
+        case 'collapse_category':
+          result = await this.executeCollapseCategory(task);
+          break;
+        case 'expand_category':
+          result = await this.executeExpandCategory(task);
+          break;
+        case 'organize_category':
+          result = await this.executeOrganizeCategory(task);
+          break;
         default:
           console.error('⚠️ [ToolExecutor] Unknown tool requested', { tool: task.tool });
           throw new Error(`Unknown tool: ${task.tool}`);
@@ -622,6 +637,54 @@ export class ToolExecutor {
     };
     eventBus.emit('ai:tool_call_completed', { task, tool: 'start_adaptive_quiz', result });
     return result;
+  }
+
+  private async executeCreateCategory(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as any;
+    const name = String(params?.name || '').trim();
+    if (!name) throw new Error('Category name required');
+    eventBus.emit('ui:create_category', { name });
+    return { taskId: task.id, success: true, result: { name }, timestamp: Date.now() };
+  }
+
+  private resolveWindowIdFromUi(uiContext: any, titleMatch?: string): string | undefined {
+    const windows: Array<{ id: string; title?: string; zIndex?: number }> = Array.isArray(uiContext?.windows) ? uiContext.windows : [];
+    if (titleMatch) {
+      const t = titleMatch.trim().toLowerCase();
+      const found = windows.find(w => (w.title || '').toLowerCase().includes(t));
+      return found?.id;
+    }
+    return windows.sort((a,b) => (b.zIndex ?? 0) - (a.zIndex ?? 0))[0]?.id;
+  }
+
+  private async executeAssignWindowToCategory(task: Task, uiContext?: any): Promise<ExecutionResult> {
+    const p = task.parameters as any;
+    const category = String(p?.category || '').trim();
+    const windowId = String(p?.windowId || '') || this.resolveWindowIdFromUi(uiContext, p?.titleMatch) || '';
+    if (!category || !windowId) throw new Error('category and windowId/titleMatch required');
+    eventBus.emit('ui:assign_window_to_category', { windowId, category });
+    return { taskId: task.id, success: true, result: { windowId, category }, timestamp: Date.now() };
+  }
+
+  private async executeCollapseCategory(task: Task): Promise<ExecutionResult> {
+    const name = String((task.parameters as any)?.name || '').trim();
+    if (!name) throw new Error('name required');
+    eventBus.emit('ui:collapse_category', { name });
+    return { taskId: task.id, success: true, result: { name }, timestamp: Date.now() };
+  }
+
+  private async executeExpandCategory(task: Task): Promise<ExecutionResult> {
+    const name = String((task.parameters as any)?.name || '').trim();
+    if (!name) throw new Error('name required');
+    eventBus.emit('ui:expand_category', { name });
+    return { taskId: task.id, success: true, result: { name }, timestamp: Date.now() };
+  }
+
+  private async executeOrganizeCategory(task: Task): Promise<ExecutionResult> {
+    const name = String((task.parameters as any)?.name || '').trim();
+    if (!name) throw new Error('name required');
+    eventBus.emit('ui:organize_category', { name });
+    return { taskId: task.id, success: true, result: { name }, timestamp: Date.now() };
   }
 
 

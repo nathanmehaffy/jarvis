@@ -17,6 +17,64 @@ import { ImageDropZone } from './components/imageDropZone';
 import { ImageViewer } from './components/imageViewer';
 import { DebugSidebar } from './components/debugSidebar';
 
+// Color palette for groups (shared with WindowManager)
+const GROUP_COLORS = [
+  '#3B82F6', // blue
+  '#EF4444', // red  
+  '#10B981', // green
+  '#F59E0B', // yellow
+  '#8B5CF6', // purple
+  '#EC4899', // pink
+  '#06B6D4', // cyan
+  '#F97316', // orange
+  '#84CC16', // lime
+  '#6366F1', // indigo
+  '#14B8A6', // teal
+  '#F43F5E', // rose
+];
+
+// Helper function to get color for a group (ensures unique colors)
+const getGroupColor = (groupName: string, existingCategories: string[] = [], existingColorMap: Record<string, string> = {}): string => {
+  if (!groupName) return '#6B7280'; // default gray
+  
+  // Get colors already used by existing categories
+  const usedColors = new Set<string>();
+  existingCategories.forEach(cat => {
+    if (existingColorMap[cat]) {
+      usedColors.add(existingColorMap[cat]);
+      return;
+    }
+    let hash = 0;
+    for (let i = 0; i < cat.length; i++) {
+      hash = ((hash << 5) - hash + cat.charCodeAt(i)) & 0xffffffff;
+    }
+    usedColors.add(GROUP_COLORS[Math.abs(hash) % GROUP_COLORS.length]);
+  });
+  
+  // Try to get a unique color for this category
+  let hash = 0;
+  for (let i = 0; i < groupName.length; i++) {
+    hash = ((hash << 5) - hash + groupName.charCodeAt(i)) & 0xffffffff;
+  }
+  
+  let colorIndex = Math.abs(hash) % GROUP_COLORS.length;
+  let selectedColor = GROUP_COLORS[colorIndex];
+  
+  // If color is already used, find the next available color
+  while (usedColors.has(selectedColor)) {
+    colorIndex = (colorIndex + 1) % GROUP_COLORS.length;
+    selectedColor = GROUP_COLORS[colorIndex];
+    
+    // If we've checked all colors and they're all used, allow duplicates
+    // (This handles the edge case where there are more categories than colors)
+    if (usedColors.size >= GROUP_COLORS.length) {
+      break;
+    }
+  }
+  
+  return selectedColor;
+};
+
 export function MainUI() {
   const windowManagerRef = useRef<WindowManagerRef>(null);
   const [inputStatus, setInputStatus] = useState<'idle' | 'listening' | 'processing' | 'error'>('idle');
@@ -27,6 +85,16 @@ export function MainUI() {
   const [isDesktopMinimized, setIsDesktopMinimized] = useState(false);
   const [showDebugSidebar, setShowDebugSidebar] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  // Category Organizer state
+  const [isCategoryOrganizerOpen, setIsCategoryOrganizerOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [allCategories, setAllCategories] = useState<string[]>([]);
+  const [categoryColors, setCategoryColors] = useState<Record<string, string>>({});
+  const [isCategoriesPanelCollapsed, setIsCategoriesPanelCollapsed] = useState(false);
+  
+  // Category Assigner state  
+  const [isAssignmentMode, setIsAssignmentMode] = useState(false);
+  const [selectedCategoryForAssignment, setSelectedCategoryForAssignment] = useState<string | null>(null);
 
   useEffect(() => {
     aiManager.initialize();
@@ -71,6 +139,8 @@ export function MainUI() {
             newSet.delete(id);
             return newSet;
           });
+          // Update categories when windows are closed
+          setTimeout(updateAllCategories, 100);
         }
       })
     ];
@@ -396,9 +466,9 @@ export function MainUI() {
 
       const position = findOptimalWindowPosition(Math.round(width), Math.round(height));
 
-      windowManagerRef.current?.openWindow({
-        id: windowId,
-        title: `Image: ${imageName}`,
+    windowManagerRef.current?.openWindow({
+      id: windowId,
+      title: `Image: ${imageName}`,
         component: () => <ImageViewer imageUrl={imageUrl} imageName={imageName} windowId={windowId} />,
         isFullscreen: false,
         isMinimized: false,
@@ -522,6 +592,261 @@ export function MainUI() {
     });
   };
 
+  // Category Organizer functions
+  const updateAllCategories = () => {
+    const categories = windowManagerRef.current?.getAllCategories?.() || [];
+    setAllCategories(categories);
+    // Recompute color map locally to match WindowManager's logic
+    const colors: Record<string, string> = {};
+    categories.forEach(cat => {
+      colors[cat] = getGroupColor(cat, categories, colors);
+    });
+    setCategoryColors(colors);
+  };
+
+  const createNewCategory = () => {
+    if (newCategoryName.trim()) {
+      const categoryName = newCategoryName.trim();
+      windowManagerRef.current?.createCategory(categoryName);
+      
+      // Immediately update local state
+      setAllCategories(prev => [...prev, categoryName].sort());
+      setCategoryColors(prev => ({ ...prev, [categoryName]: getGroupColor(categoryName, allCategories, prev) }));
+      setNewCategoryName('');
+      
+      eventBus.emit('system:output', {
+        text: `✅ **Created category "${categoryName}"**!\n\nCategory now appears in the color key with its assigned color.`
+      });
+    }
+  };
+
+  const deleteCategoryHandler = (categoryName: string) => {
+    windowManagerRef.current?.deleteCategory(categoryName);
+    updateAllCategories();
+    
+    eventBus.emit('system:output', {
+      text: `🗑️ **Deleted category "${categoryName}"**!\n\nAll windows were unassigned from this category.`
+    });
+  };
+
+  // Category Assignment functions
+  const toggleAssignmentMode = () => {
+    setIsAssignmentMode(!isAssignmentMode);
+    setSelectedCategoryForAssignment(null);
+  };
+
+  const selectCategoryForAssignment = (categoryName: string) => {
+    setSelectedCategoryForAssignment(categoryName);
+    
+    eventBus.emit('system:output', {
+      text: `🎯 **Category "${categoryName}" selected**!\n\nNow click on any window to assign it to this category.`
+    });
+  };
+
+  const assignWindowToSelectedCategory = (windowId: string) => {
+    if (selectedCategoryForAssignment) {
+      windowManagerRef.current?.assignWindowToCategory(windowId, selectedCategoryForAssignment);
+      
+      eventBus.emit('system:output', {
+        text: `✅ **Window assigned** to "${selectedCategoryForAssignment}"!\n\nWindow now has a colored border matching the category.`
+      });
+    }
+  };
+
+  const testMixedWindowsOrganize = () => {
+    // Create a mix of different window types to test organize function
+    
+    // Create 2 AI-generated windows with different sizes
+    eventBus.emit('ui:open_window', {
+      id: 'test-note-1',
+      title: '📝 Test Note 1',
+      content: `# Test Note Window
+
+This is a **test note** window with some content.
+
+- Item 1
+- Item 2
+- Item 3`,
+      size: { width: 400, height: 300 }
+    });
+
+    setTimeout(() => {
+      eventBus.emit('ui:open_window', {
+        id: 'test-dialog-2',
+        title: '💬 Test Dialog 2', 
+        content: `## Dialog Window
+
+This is a longer dialog window with more content to test different aspect ratios.
+
+> This is a quote block
+> 
+> With multiple lines
+
+\`\`\`javascript
+function test() {
+  return "Hello World";
+}
+\`\`\``,
+        size: { width: 500, height: 400 }
+      });
+    }, 200);
+
+    setTimeout(() => {
+      eventBus.emit('ui:open_window', {
+        id: 'test-wide-3',
+        title: '📊 Wide Window 3',
+        content: `### Wide Layout Window
+
+| Column 1 | Column 2 | Column 3 | Column 4 |
+|----------|----------|----------|----------|
+| Data A   | Data B   | Data C   | Data D   |
+| Data E   | Data F   | Data G   | Data H   |
+
+This window has a **wider aspect ratio** to test mixed layouts.`,
+        size: { width: 700, height: 250 }
+      });
+    }, 400);
+
+    // Add system message
+    eventBus.emit('system:output', {
+      text: `🧪 **Mixed Window Types Created!**
+
+Created 3 **generated windows** (will keep default size):
+- **📝 Note Window** (400×300) - Standard aspect ratio
+- **💬 Dialog Window** (500×400) - Slightly taller  
+- **📊 Wide Window** (700×250) - Wide aspect ratio
+
+**🎯 New Organize Behavior:**
+- **Image windows** → Optimized size & smart packing
+- **Generated windows** → Keep current size, smart placement (no stacking!)
+
+**🔍 Generated Window Placement:**
+1. **First**: Try to find non-overlapping positions
+2. **Fallback**: Find position with minimal overlap
+3. **Never**: Stack windows in same location
+
+Try adding some **image windows** (drag & drop), then use **voice command**: *"Organize the windows"* to see the difference!`
+    });
+  };
+
+  const testCategoryFeatures = () => {
+    // Create several windows and categories for demonstration
+    eventBus.emit('ui:open_window', {
+      id: 'math-calc-1',
+      title: '🧮 Calculator',
+      content: `# Calculator App
+
+This is a **math-related** window for calculations.
+
+## Basic Operations:
+- Addition: \`2 + 3 = 5\`
+- Subtraction: \`10 - 4 = 6\`
+- Multiplication: \`7 × 8 = 56\`
+
+*Perfect for the "Math" group!*`,
+      size: { width: 350, height: 280 }
+    });
+
+    setTimeout(() => {
+      eventBus.emit('ui:open_window', {
+        id: 'math-formula-2',
+        title: '📐 Geometry Formulas',
+        content: `# Geometry Reference
+
+**Area Formulas:**
+- Circle: \`A = πr²\`
+- Rectangle: \`A = l × w\`
+- Triangle: \`A = ½bh\`
+
+**Volume Formulas:**
+- Sphere: \`V = ⁴⁄₃πr³\`
+- Cylinder: \`V = πr²h\`
+
+*Another math window for grouping!*`,
+        size: { width: 400, height: 350 }
+      });
+    }, 200);
+
+    setTimeout(() => {
+      eventBus.emit('ui:open_window', {
+        id: 'reading-book-1',
+        title: '📚 Book Notes',
+        content: `# Reading Notes
+
+## Current Book: "The Great Gatsby"
+
+### Chapter 1 Summary:
+- Nick Carraway moves to West Egg
+- Meets his mysterious neighbor **Gatsby**
+- Dinner at Tom and Daisy's house
+
+### Key Themes:
+- The American Dream
+- Social class distinctions
+- Love and obsession
+
+*Perfect for the "Reading" group!*`,
+        size: { width: 450, height: 400 }
+      });
+    }, 400);
+
+    setTimeout(() => {
+      eventBus.emit('ui:open_window', {
+        id: 'reading-vocab-2',
+        title: '📖 Vocabulary List',
+        content: `# Vocabulary Builder
+
+## New Words:
+1. **Serendipity** - *pleasant surprise*
+2. **Ephemeral** - *lasting very briefly*
+3. **Quintessential** - *most perfect example*
+4. **Ubiquitous** - *present everywhere*
+5. **Mellifluous** - *sweet-sounding*
+
+## Usage Examples:
+> "The serendipitous meeting changed everything."
+
+*Another reading-related window!*`,
+        size: { width: 380, height: 320 }
+      });
+    }, 600);
+
+    // Create sample categories
+    setTimeout(() => {
+      windowManagerRef.current?.createCategory("Math");
+      windowManagerRef.current?.createCategory("Reading");
+      updateAllCategories();
+    }, 800);
+
+    // Add system message
+    eventBus.emit('system:output', {
+      text: `🏷️ **Category System Demo Ready!**
+
+Created **4 windows** + **2 categories**:
+- **🧮 Calculator** + **📐 Geometry** → Ready for "Math" category
+- **📚 Book Notes** + **📖 Vocabulary** → Ready for "Reading" category
+
+## 🎯 **New 2-Step Process:**
+
+### **Step 1: Categories Created** ✅
+- **"Math"** and **"Reading"** categories auto-created
+- **Color key** shows all categories with their colors
+
+### **Step 2: Assignment Process**
+1. **Click "Assign" button** (orange lightning icon)
+2. **Click a category** (e.g., "Math")  
+3. **Click windows** to assign them to that category
+4. **Watch borders change color** instantly!
+
+## ✨ **Key Benefits:**
+- **Separate systems**: Category management vs assignment
+- **Visual feedback**: Color key shows ALL categories
+- **Intuitive workflow**: Click category → Click windows
+
+*Try the new system: Categories → Assign → Click & Assign!* 🎨`
+    });
+  };
+
   const testMarkdownFeatures = () => {
     // Test system output with markdown
     eventBus.emit('system:output', {
@@ -627,10 +952,11 @@ function sayHello() {
         onWindowsChange={(windows) => {
           aiManager.setUIContext({ windows });
         }}
+        onWindowClick={isAssignmentMode && selectedCategoryForAssignment ? assignWindowToSelectedCategory : undefined}
       >
         <AnimatedBackground />
         <VoiceTaskListener />
-
+        
         {showDebugSidebar && (
           <DebugSidebar
             inputStatus={inputStatus}
@@ -651,14 +977,11 @@ function sayHello() {
            onClick={(e) => {
              e.preventDefault();
              e.stopPropagation();
-             // Use setTimeout to ensure we're not in a render cycle
              setTimeout(() => {
-               if (windowManagerRef.current?.organizeWindows) {
-                 windowManagerRef.current.organizeWindows();
-               }
+               windowManagerRef.current?.organizeWindows?.();
              }, 0);
            }}
-           className="fixed right-4 top-1/2 -translate-y-1/2 z-40 w-16 h-16 bg-purple-500/30 backdrop-blur-xl border-2 border-purple-400/50 rounded-2xl text-purple-200 shadow-2xl flex flex-col items-center justify-center transition-all duration-300 hover:scale-110 hover:bg-purple-500/40 group"
+           className={`fixed right-4 ${isImageDropMinimized ? 'top-32' : 'top-44'} z-40 w-16 h-16 bg-purple-500/30 backdrop-blur-xl border-2 border-purple-400/50 rounded-2xl text-purple-200 shadow-2xl flex flex-col items-center justify-center transition-all duration-300 hover:scale-110 hover:bg-purple-500/40 group`}
            title="Organize Windows - Maximize Area"
          >
            <svg className="w-8 h-8 transition-transform duration-300 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -667,8 +990,282 @@ function sayHello() {
            <span className="text-xs font-medium mt-1 opacity-80 group-hover:opacity-100 transition-opacity">Organize</span>
          </button>
 
+         {/* Category Organizer Button */}
+         <button
+           onClick={() => setIsCategoryOrganizerOpen(!isCategoryOrganizerOpen)}
+           className={`fixed right-4 ${isImageDropMinimized ? 'top-56' : 'top-64'} z-40 w-16 h-16 backdrop-blur-xl border-2 rounded-2xl shadow-2xl flex flex-col items-center justify-center transition-all duration-300 hover:scale-110 group ${
+             isCategoryOrganizerOpen 
+               ? 'bg-purple-500/40 border-purple-400/60 text-purple-200 hover:bg-purple-500/50' 
+               : 'bg-blue-500/30 border-blue-400/50 text-blue-200 hover:bg-blue-500/40'
+           }`}
+           title="Manage Categories"
+         >
+           <svg className="w-8 h-8 transition-transform duration-300 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+           </svg>
+           <span className="text-xs font-medium mt-1 opacity-80 group-hover:opacity-100 transition-opacity">Categories</span>
+         </button>
+
+         {/* Category Assigner Button */}
+         {allCategories.length > 0 && (
+           <button
+             onClick={toggleAssignmentMode}
+             className={`fixed right-4 ${isImageDropMinimized ? 'top-80' : 'top-96'} z-40 w-16 h-16 backdrop-blur-xl border-2 rounded-2xl shadow-2xl flex flex-col items-center justify-center transition-all duration-300 hover:scale-110 group ${
+               isAssignmentMode 
+                 ? 'bg-green-500/40 border-green-400/60 text-green-200 hover:bg-green-500/50' 
+                 : 'bg-orange-500/30 border-orange-400/50 text-orange-200 hover:bg-orange-500/40'
+             }`}
+             title={isAssignmentMode ? "Exit Assignment Mode" : "Assign Windows to Categories"}
+           >
+             <svg className="w-8 h-8 transition-transform duration-300 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+             </svg>
+             <span className="text-xs font-medium mt-1 opacity-80 group-hover:opacity-100 transition-opacity">Assign</span>
+           </button>
+         )}
+
+        {/* Collapsed Category Folders are now shown inside the Category Colors panel */}
+
+         {/* Category Organizer Panel */}
+         {isCategoryOrganizerOpen && (
+           <div className="fixed right-24 top-1/2 -translate-y-1/2 z-40 w-80 bg-black/60 backdrop-blur-xl border border-white/20 rounded-2xl text-white shadow-2xl p-4">
+             <div className="flex items-center justify-between mb-4">
+               <h3 className="text-lg font-semibold">🏷️ Manage Categories</h3>
+               <button 
+                 onClick={() => setIsCategoryOrganizerOpen(false)}
+                 className="text-white/70 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-full"
+               >
+                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                 </svg>
+               </button>
+          </div>
+
+             <div className="mb-4">
+               <label className="block text-sm font-medium mb-2">Create New Category:</label>
+               <div className="flex space-x-2">
+                 <input
+                   type="text"
+                   value={newCategoryName}
+                   onChange={(e) => setNewCategoryName(e.target.value)}
+                   placeholder="e.g., Math, Reading, Work..."
+                   className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-blue-400/50 focus:bg-white/15 transition-all"
+                   onKeyPress={(e) => e.key === 'Enter' && createNewCategory()}
+                 />
+                 <button
+                   onClick={createNewCategory}
+                   disabled={!newCategoryName.trim()}
+                   className="px-4 py-2 bg-blue-500/30 hover:bg-blue-500/40 disabled:bg-gray-500/20 disabled:text-gray-400 border border-blue-400/50 disabled:border-gray-600/30 rounded-lg transition-all duration-200 font-medium"
+                 >
+                   Add
+                 </button>
+               </div>
+             </div>
+             
+            {/* Bulk actions */}
+            {allCategories.length > 0 && (
+              <div className="mb-3 flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    allCategories.forEach(cat => windowManagerRef.current?.collapseCategory?.(cat));
+                  }}
+                  className="px-3 py-1.5 text-xs bg-white/10 hover:bg-white/15 border border-white/20 rounded-lg transition-colors"
+                >
+                  Collapse All
+                </button>
+                <button
+                  onClick={() => {
+                    allCategories.forEach(cat => windowManagerRef.current?.expandCategory?.(cat));
+                  }}
+                  className="px-3 py-1.5 text-xs bg-white/10 hover:bg-white/15 border border-white/20 rounded-lg transition-colors"
+                >
+                  Expand All
+                </button>
+              </div>
+            )}
+
+             <div className="mb-4">
+               <label className="block text-sm font-medium mb-2">Existing Categories ({allCategories.length}):</label>
+              <div className="max-h-32 overflow-y-auto space-y-2">
+                 {allCategories.map((categoryName) => {
+                   const categoryColor = categoryColors[categoryName] || getGroupColor(categoryName, allCategories, categoryColors);
+                  const isCollapsed = windowManagerRef.current?.isCategoryCollapsed?.(categoryName) ?? false;
+                   return (
+                     <div key={categoryName} className="flex items-center space-x-2 p-2 hover:bg-white/5 rounded">
+                       <div 
+                         className="w-4 h-4 rounded-full border-2 flex-shrink-0"
+                         style={{ 
+                           backgroundColor: `${categoryColor}60`,
+                           borderColor: categoryColor
+                         }}
+                       ></div>
+                       <span className="text-sm flex-1">{categoryName}</span>
+                    <button
+                      onClick={() => windowManagerRef.current?.collapseCategory?.(categoryName)}
+                      className="text-xs px-2 py-1 rounded border text-yellow-300 border-yellow-400/40 hover:bg-yellow-500/10 transition-colors"
+                      title="Collapse category windows"
+                      disabled={isCollapsed}
+                    >
+                      Collapse
+                    </button>
+                    <button
+                      onClick={() => windowManagerRef.current?.expandCategory?.(categoryName)}
+                      className="text-xs px-2 py-1 rounded border text-emerald-300 border-emerald-400/40 hover:bg-emerald-500/10 transition-colors"
+                      title="Expand category windows"
+                      disabled={!isCollapsed}
+                    >
+                      Expand
+                    </button>
+                       <button
+                         onClick={() => deleteCategoryHandler(categoryName)}
+                         className="text-red-400 hover:text-red-300 transition-colors p-1 hover:bg-red-500/10 rounded"
+                         title="Delete Category"
+                       >
+                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                         </svg>
+                       </button>
+                     </div>
+                   );
+                 })}
+                 {allCategories.length === 0 && (
+                   <div className="text-center text-white/50 py-4">
+                     No categories yet. Create one above!
+                   </div>
+                 )}
+               </div>
+             </div>
+           </div>
+         )}
+
+         {/* Category Assignment Panel */}
+         {isAssignmentMode && (
+           <div className="fixed right-24 top-24 z-40 w-80 bg-black/60 backdrop-blur-xl border border-white/20 rounded-2xl text-white shadow-2xl p-4">
+             <div className="flex items-center justify-between mb-4">
+               <h3 className="text-lg font-semibold">⚡ Assign to Category</h3>
+               <button 
+                 onClick={toggleAssignmentMode}
+                 className="text-white/70 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-full"
+               >
+                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                 </svg>
+               </button>
+             </div>
+             
+             {selectedCategoryForAssignment ? (
+               <div className="mb-4 p-3 bg-green-500/20 border border-green-400/30 rounded-lg">
+                 <div className="flex items-center space-x-2">
+                   <div 
+                     className="w-4 h-4 rounded-full border-2"
+                     style={{ 
+                       backgroundColor: `${(selectedCategoryForAssignment ? (categoryColors[selectedCategoryForAssignment] || getGroupColor(selectedCategoryForAssignment, allCategories, categoryColors)) : '#6B7280')}60`,
+                       borderColor: selectedCategoryForAssignment ? (categoryColors[selectedCategoryForAssignment] || getGroupColor(selectedCategoryForAssignment, allCategories, categoryColors)) : '#6B7280'
+                     }}
+                   ></div>
+                   <span className="font-medium">Selected: {selectedCategoryForAssignment}</span>
+                 </div>
+                 <div className="text-sm text-green-200 mt-1">
+                   Click on any window to assign it to this category
+                 </div>
+               </div>
+             ) : (
+               <div className="mb-4">
+                 <label className="block text-sm font-medium mb-2">Select Category to Assign:</label>
+                 <div className="max-h-32 overflow-y-auto space-y-2">
+                   {allCategories.map((categoryName) => {
+                     const categoryColor = categoryColors[categoryName] || getGroupColor(categoryName, allCategories, categoryColors);
+                     return (
+                       <button
+                         key={categoryName}
+                         onClick={() => selectCategoryForAssignment(categoryName)}
+                         className="w-full flex items-center space-x-2 p-2 hover:bg-white/5 rounded transition-colors"
+                       >
+                         <div 
+                           className="w-4 h-4 rounded-full border-2"
+                           style={{ 
+                             backgroundColor: `${categoryColor}60`,
+                             borderColor: categoryColor
+                           }}
+                         ></div>
+                         <span className="text-sm">{categoryName}</span>
+                       </button>
+                     );
+                   })}
+                 </div>
+               </div>
+             )}
+           </div>
+         )}
+
+        {/* Categories Panel (compact, collapsible) */}
+        {allCategories.length > 0 && (
+          <div className="fixed right-4 bottom-4 z-40 bg-black/60 backdrop-blur-xl border border-white/20 rounded-2xl text-white shadow-2xl p-3 w-72">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-semibold">📂 Categories</h4>
+              <button
+                onClick={() => setIsCategoriesPanelCollapsed(!isCategoriesPanelCollapsed)}
+                className="p-1 rounded hover:bg-white/10 text-white/80 hover:text-white transition-colors"
+                title={isCategoriesPanelCollapsed ? 'Expand panel' : 'Collapse panel'}
+              >
+                <svg className={`w-4 h-4 transition-transform ${isCategoriesPanelCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+            {!isCategoriesPanelCollapsed && (
+              <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                {allCategories.map((categoryName) => {
+                  const categoryColor = categoryColors[categoryName] || getGroupColor(categoryName, allCategories, categoryColors);
+                  const windowsInCategory = windowManagerRef.current?.getWindows?.()?.filter(w => w.group === categoryName).length || 0;
+                  return (
+                    <div key={categoryName} className="flex items-center space-x-3">
+                      <div 
+                        className="w-4 h-4 rounded-full border-2 flex-shrink-0 shadow-sm"
+                        style={{ 
+                          backgroundColor: `${categoryColor}60`,
+                          borderColor: categoryColor,
+                          boxShadow: `0 0 6px ${categoryColor}30`
+                        }}
+                      ></div>
+                      <div className="flex-1 truncate">
+                        <span className="text-sm font-medium">{categoryName}</span>
+                        <span className="text-xs text-white/60 ml-2">({windowsInCategory})</span>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {(windowManagerRef.current?.getCollapsedCategories?.() || []).length > 0 && (
+                  <div className="pt-2 border-t border-white/10">
+                    <div className="text-xs text-white/70 mb-2">Folders</div>
+                    <div className="flex flex-row flex-wrap gap-2">
+                      {(windowManagerRef.current?.getCollapsedCategories?.() || []).map((cat) => {
+                        const color = categoryColors[cat] || getGroupColor(cat, allCategories, categoryColors);
+                        const count = windowManagerRef.current?.getWindows?.()?.filter(w => w.group === cat).length || 0;
+                        return (
+                          <button
+                            key={cat}
+                            onClick={() => windowManagerRef.current?.expandCategory?.(cat)}
+                            className="px-2 py-1 bg-black/40 backdrop-blur-md border border-white/10 rounded-md text-white flex items-center gap-2 hover:bg-black/35 transition-colors"
+                            title={`Expand ${cat}`}
+                          >
+                            <div className="w-3 h-3 rounded-full border-2" style={{ backgroundColor: `${color}60`, borderColor: color }}></div>
+                            <span className="text-xs font-medium truncate max-w-[80px]">{cat}</span>
+                            <span className="text-[10px] text-white/70">{count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
          {/* Image Drop Zone - Fixed Position */}
-         <div className="fixed top-4 right-4 z-50">
+         <div className="fixed top-4 right-4 z-50" onClick={(e) => e.stopPropagation()}>
           {isImageDropMinimized ? (
             /* Collapsed - Circular Icon */
             <button
@@ -724,12 +1321,12 @@ function sayHello() {
             <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 text-white shadow-2xl transition-all duration-300">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-xl mr-3 flex items-center justify-center">
-                    <div className="w-4 h-4 bg-white rounded-full opacity-80"></div>
-                  </div>
-                  <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
-                    Jarvis Desktop
-                  </h1>
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-xl mr-3 flex items-center justify-center">
+                <div className="w-4 h-4 bg-white rounded-full opacity-80"></div>
+              </div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
+                Jarvis Desktop
+              </h1>
                 </div>
                 <button
                   onClick={() => setIsDesktopMinimized(true)}
@@ -740,18 +1337,18 @@ function sayHello() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
                   </svg>
                 </button>
-              </div>
+            </div>
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <button
-                  onClick={openInputWindow}
+              <button
+                onClick={openInputWindow}
                   className="group flex-1 px-6 py-4 bg-gradient-to-r from-blue-500/60 to-indigo-600/60 hover:from-blue-500/80 hover:to-indigo-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
-                >
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-blue-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                    <span className="font-semibold">Open Input Window</span>
-                  </div>
-                </button>
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-blue-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Input Window</span>
+                </div>
+              </button>
                 {openWindows.has('input-window') && (
                   <button
                     onClick={() => toggleMinimize('input-window')}
@@ -763,15 +1360,15 @@ function sayHello() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={openAIWindow}
+              <button
+                onClick={openAIWindow}
                   className="group flex-1 px-6 py-4 bg-gradient-to-r from-emerald-500/60 to-green-600/60 hover:from-emerald-500/80 hover:to-green-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
-                >
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-emerald-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                    <span className="font-semibold">Open AI Window</span>
-                  </div>
-                </button>
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-emerald-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open AI Window</span>
+                </div>
+              </button>
                 {openWindows.has('ai-window') && (
                   <button
                     onClick={() => toggleMinimize('ai-window')}
@@ -783,15 +1380,15 @@ function sayHello() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={openUserNotesWindow}
+              <button
+                onClick={openUserNotesWindow}
                   className="group flex-1 px-6 py-4 bg-gradient-to-r from-blue-500/60 to-indigo-600/60 hover:from-blue-500/80 hover:to-indigo-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
-                >
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-blue-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                    <span className="font-semibold">Open Personal Notes</span>
-                  </div>
-                </button>
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-blue-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Personal Notes</span>
+                </div>
+              </button>
                 {openWindows.has('user-notes-window') && (
                   <button
                     onClick={() => toggleMinimize('user-notes-window')}
@@ -803,15 +1400,15 @@ function sayHello() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={openSystemOutputWindow}
+              <button
+                onClick={openSystemOutputWindow}
                   className="group flex-1 px-6 py-4 bg-gradient-to-r from-green-500/60 to-emerald-600/60 hover:from-green-500/80 hover:to-emerald-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
-                >
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-green-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                    <span className="font-semibold">Open System Output</span>
-                  </div>
-                </button>
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-green-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open System Output</span>
+                </div>
+              </button>
                 {openWindows.has('system-output-window') && (
                   <button
                     onClick={() => toggleMinimize('system-output-window')}
@@ -823,15 +1420,15 @@ function sayHello() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={openGraphWindow}
+              <button
+                onClick={openGraphWindow}
                   className="group flex-1 px-6 py-4 bg-gradient-to-r from-purple-500/60 to-pink-600/60 hover:from-purple-500/80 hover:to-pink-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
-                >
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-purple-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                    <span className="font-semibold">Open Line Graph</span>
-                  </div>
-                </button>
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-purple-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Line Graph</span>
+                </div>
+              </button>
                 {openWindows.has('graph-window') && (
                   <button
                     onClick={() => toggleMinimize('graph-window')}
@@ -843,15 +1440,15 @@ function sayHello() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={openBarGraphWindow}
+              <button
+                onClick={openBarGraphWindow}
                   className="group flex-1 px-6 py-4 bg-gradient-to-r from-orange-500/60 to-red-600/60 hover:from-orange-500/80 hover:to-red-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
-                >
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-orange-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                    <span className="font-semibold">Open Bar Graph</span>
-                  </div>
-                </button>
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-orange-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Bar Graph</span>
+                </div>
+              </button>
                 {openWindows.has('bar-graph-window') && (
                   <button
                     onClick={() => toggleMinimize('bar-graph-window')}
@@ -863,15 +1460,15 @@ function sayHello() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={openPieChartWindow}
+              <button
+                onClick={openPieChartWindow}
                   className="group flex-1 px-6 py-4 bg-gradient-to-r from-pink-500/60 to-purple-600/60 hover:from-pink-500/80 hover:to-purple-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10"
-                >
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-pink-400 rounded-full mr-3 group-hover:animate-pulse"></div>
-                    <span className="font-semibold">Open Pie Chart</span>
-                  </div>
-                </button>
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-pink-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">Open Pie Chart</span>
+                </div>
+              </button>
                 {openWindows.has('pie-chart-window') && (
                   <button
                     onClick={() => toggleMinimize('pie-chart-window')}
@@ -899,7 +1496,7 @@ function sayHello() {
                 <div className="flex items-center">
                   <div className="w-3 h-3 bg-purple-400 rounded-full mr-3 group-hover:animate-pulse"></div>
                   <span className="font-semibold">🎉 Test Markdown Features</span>
-                </div>
+            </div>
               </button>
               
               <button
@@ -909,6 +1506,26 @@ function sayHello() {
                 <div className="flex items-center">
                   <div className="w-3 h-3 bg-orange-400 rounded-full mr-3 group-hover:animate-pulse"></div>
                   <span className="font-semibold">🎯 Test 4-Corner Resizing</span>
+          </div>
+              </button>
+
+              <button
+                onClick={testMixedWindowsOrganize}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-blue-500/60 to-cyan-600/60 hover:from-blue-500/80 hover:to-cyan-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10 mt-4"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-blue-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">🪟 Test Mixed Windows + Organize</span>
+                </div>
+              </button>
+
+              <button
+                onClick={testCategoryFeatures}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-emerald-500/60 to-teal-600/60 hover:from-emerald-500/80 hover:to-teal-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10 mt-4"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-emerald-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">🏷️ Test Category System + Assignment</span>
                 </div>
               </button>
             </div>

@@ -57,6 +57,11 @@ export function MarkdownText({ children, className = '' }: MarkdownTextProps) {
           </em>
         ),
         code: ({ children, className }) => {
+          const raw = String(children ?? '');
+          // Pass through $$...$$ blocks directly so KaTeX renders them
+          if (!className && /^\$\$[\s\S]*\$\$$/.test(raw.trim())) {
+            return <div>{raw}</div>;
+          }
           const isInline = !className;
           return isInline ? (
             <code className="bg-gray-800/50 text-green-300 px-1 py-0.5 rounded text-sm font-mono">
