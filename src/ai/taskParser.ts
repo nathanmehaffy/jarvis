@@ -37,7 +37,10 @@ ABSOLUTE OUTPUT CONTRACT (NO EXCEPTIONS):
 Available tools (reference only): provided in user payload under "availableTools"
 
 Decision Rules:
+- Prioritize the most recent user command. The last line of the transcript is the most important.
+- NEVER search the entire conversation history verbatim. Always extract a concise search query.
 - Use the most specific tool available. Use "search" only when no specific tool is appropriate.
+- If an imperative/command-like phrase follows a search directive, DO NOT append it to the search query; treat it as a separate tool call unless the user explicitly instructs to include it inside the query (e.g., "search for 'X then Y' as one query").
 - Match parameter names and types to the tool schema exactly. Omit optional params rather than guessing.
 - Use UI context when referring to windows (prefer windowId; otherwise provide a reliable title match).
 - For multi-step intents, output multiple items in order.
@@ -60,7 +63,10 @@ User: Close the notes window (UI context has window with title 'Notes')
 Output: {"new_tool_calls":[{"tool":"close_window","parameters":{"windowId":"notes-window-id"},"sourceText":"Close the notes window"}]}
 
 User: What's the weather? (No specific tool, fallback to search)
-Output: {"new_tool_calls":[{"tool":"search","parameters":{"query":"current weather"},"sourceText":"What's the weather?"}]}`;
+Output: {"new_tool_calls":[{"tool":"search","parameters":{"query":"current weather"},"sourceText":"What's the weather?"}]}
+
+User: search for potato nutrition then create a note saying buy potatoes
+Output: {"new_tool_calls":[{"tool":"search","parameters":{"query":"potato nutrition"},"sourceText":"search for potato nutrition"},{"tool":"open_window","parameters":{"windowType":"sticky-note","context":{"content":"buy potatoes"}},"sourceText":"create a note saying buy potatoes"}]}`;
 
     const jsonPayload = {
       fullTranscript: fullTranscript,
@@ -180,6 +186,9 @@ Output: {"new_tool_calls":[{"tool":"search","parameters":{"query":"current weath
 
     const merge = (arr: Array<{ tool: string; parameters: any; sourceText: string }>) => arr.filter(c => {
       try {
+        if (c.tool === 'close_window' && c.parameters?.selector === 'all') {
+          return true;
+        }
         const key = `${c.tool}:${JSON.stringify(c.parameters || {})}`;
         if (seenKeys.has(key)) return false;
         seenKeys.add(key);

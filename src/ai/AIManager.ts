@@ -62,6 +62,7 @@ export class AIManager {
       this.worker = new Worker(new URL('./aiWorker.ts', import.meta.url));
       
       this.worker.onmessage = (event) => {
+        console.log('[AIManager] Received message from worker:', event.data);
         const { type, data } = event.data;
         // Normalize error channel
         if (type === 'AI_ERROR') {

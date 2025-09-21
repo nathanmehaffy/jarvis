@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
 
     const prompt = `You are a search assistant for Jarvis. Given the user's query, generate a comprehensive but concise response using real-time search results. Structure output as markdown for readability.
 
-Query: \${query}
+Query: ${query}
 
 Rules:
 - Start with a direct answer.
@@ -42,7 +42,7 @@ Sources:
 [1] x.ai
 [2] anthropic.com`;
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

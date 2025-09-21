@@ -650,8 +650,20 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
           });
         }
       }),
-      eventBus.on('ui:close_window', (data: { windowId?: string }) => {
-        if (data?.windowId) {
+      eventBus.on('ui:close_window', (data: { windowId?: string; selector?: string }) => {
+        if (data?.selector === 'all') {
+          setState(prev => ({
+            ...prev,
+            windows: prev.windows.map(w => ({ ...w, animationState: 'closing' as const }))
+          }));
+          setTimeout(() => {
+            setState(prev => ({
+              ...prev,
+              windows: [],
+              activeWindowId: null
+            }));
+          }, 250);
+        } else if (data?.windowId) {
           closeWindow(data.windowId);
         }
       }),

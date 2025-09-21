@@ -252,21 +252,17 @@ export class ToolExecutor {
       } else if (params.selector === 'active') {
         targetWindowId = (windows.slice().sort((a, b) => (b.zIndex ?? 0) - (a.zIndex ?? 0))[0] || {}).id;
       } else if (params.selector === 'all') {
-        const ids = windows.map(w => w.id);
-        ids.forEach(id => {
-          const closeData = { windowId: id, timestamp: Date.now() };
-          eventBus.emit('ui:close_window', closeData);
-          eventBus.emit('window:closed', closeData);
-          try {
-            if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
-              (self as any).postMessage({ type: 'UI_CLOSE_WINDOW', data: closeData });
-            }
-          } catch (_) {}
-        });
+        const closeData = { selector: 'all', timestamp: Date.now() };
+        eventBus.emit('ui:close_window', closeData);
+        try {
+          if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
+            (self as any).postMessage({ type: 'UI_CLOSE_WINDOW', data: closeData });
+          }
+        } catch (_) {}
         const result = {
           taskId: task.id,
           success: true,
-          result: { closedAll: true, count: ids.length },
+          result: { closedAll: true },
           timestamp: Date.now()
         };
         eventBus.emit('ai:tool_call_completed', { task, tool: 'close_window', result });
