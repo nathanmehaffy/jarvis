@@ -23,4 +23,5 @@ export interface WindowManagerState {
   windows: WindowData[];
   activeWindowId: string | null;
   nextZIndex: number;
+  collapsedCategories?: string[];
 }
