@@ -46,6 +46,12 @@ export function MainUI() {
       eventBus.on('ai:text_command_processed', () => setAiStatus('ready')),
       eventBus.on('ai:ai_response_generated', () => setAiStatus('ready')),
       eventBus.on('ai:error', () => setAiStatus('error')),
+      eventBus.on('ui:organize_windows', () => {
+        console.log('[MainUI] Organize windows command received from voice');
+        setTimeout(() => {
+          windowManagerRef.current?.organizeWindows();
+        }, 0);
+      }),
       eventBus.on('window:opened', (data: { id?: string }) => {
         if (typeof data?.id === 'string') {
           setOpenWindows(prev => new Set<string>([...prev, data.id as string]));

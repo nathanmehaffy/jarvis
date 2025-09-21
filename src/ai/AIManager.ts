@@ -71,6 +71,10 @@ export class AIManager {
           eventBus.emit('ui:close_window', data);
           return;
         }
+        if (type === 'UI_ORGANIZE_WINDOWS') {
+          eventBus.emit('ui:organize_windows', data);
+          return;
+        }
         eventBus.emit(`ai:${type.toLowerCase()}`, data);
       };
 

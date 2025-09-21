@@ -2,6 +2,15 @@ import { Tool } from './types';
 
 export const AVAILABLE_TOOLS: Tool[] = [
   {
+    name: 'organize_windows',
+    description: 'Organizes and optimizes the layout of all open windows on the screen. Use this when user asks to organize, arrange, tidy up, optimize, or clean up the windows.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
+  },
+  {
     name: 'open_window',
     description: 'Opens a new popup window with specified type and context. Use this for creating, opening, showing, or displaying a window. Education types supported: lesson, quiz, hint, explainer.',
     parameters: {

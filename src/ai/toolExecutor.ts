@@ -49,6 +49,10 @@ export class ToolExecutor {
           result = await this.executeCloseWindow(task, uiContext);
           break;
         
+        case 'organize_windows':
+          result = await this.executeOrganizeWindows(task);
+          break;
+        
         default:
           throw new Error(`Unknown tool: ${task.tool}`);
       }
@@ -200,6 +204,36 @@ export class ToolExecutor {
       timestamp: Date.now()
     };
     eventBus.emit('ai:tool_call_completed', { task, tool: 'close_window', result });
+    return result;
+  }
+
+  private async executeOrganizeWindows(task: Task): Promise<ExecutionResult> {
+    eventBus.emit('ai:tool_call_started', { task, tool: 'organize_windows', params: {} });
+    
+    // Emit organize event to the UI
+    eventBus.emit('ui:organize_windows');
+
+    // If running inside a Web Worker, forward to the main thread
+    try {
+      if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
+        (self as any).postMessage({ type: 'UI_ORGANIZE_WINDOWS', data: {} });
+      }
+    } catch (_) {
+      // no-op
+    }
+
+    console.log(`[ToolExecutor] Organizing windows`);
+
+    const result = {
+      taskId: task.id,
+      success: true,
+      result: {
+        action: 'organize_windows',
+        message: 'Windows organized successfully'
+      },
+      timestamp: Date.now()
+    };
+    eventBus.emit('ai:tool_call_completed', { task, tool: 'organize_windows', result });
     return result;
   }
 

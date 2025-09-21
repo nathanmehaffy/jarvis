@@ -2,6 +2,7 @@
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { SimpleMarkdownText } from './SimpleMarkdownText';
 
 interface MarkdownTextProps {
   children: string;
@@ -9,11 +10,17 @@ interface MarkdownTextProps {
 }
 
 export function MarkdownText({ children, className = '' }: MarkdownTextProps) {
-  return (
-    <ReactMarkdown
-      className={`markdown-content ${className}`}
-      remarkPlugins={[remarkGfm]}
-      components={{
+  // Safety check for children
+  if (!children || typeof children !== 'string') {
+    return <div className={`text-cyan-400/60 text-sm italic ${className}`}>No content to display</div>;
+  }
+
+  try {
+    return (
+      <div className={`markdown-content ${className}`}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
         // Custom styling for markdown elements
         h1: ({ children }) => (
           <h1 className="text-xl font-bold text-cyan-100 mb-2 border-b border-cyan-400/30 pb-1">
@@ -116,5 +123,11 @@ export function MarkdownText({ children, className = '' }: MarkdownTextProps) {
     >
       {children}
     </ReactMarkdown>
-  );
+      </div>
+    );
+  } catch (error) {
+    console.error('ReactMarkdown rendering error, falling back to simple renderer:', error);
+    // Fallback to simple markdown renderer
+    return <SimpleMarkdownText className={className}>{children}</SimpleMarkdownText>;
+  }
 }

@@ -84,6 +84,7 @@ Your job is to:
 
 For window operations:
 - When opening windows, infer appropriate window types (sticky-note, notification, dialog, settings, general, lesson, quiz, hint, explainer)
+- When user asks to organize, arrange, tidy up, optimize, or clean up windows, use the organize_windows tool
 - Extract relevant context like titles, content, and any positioning hints
 - For sticky notes, use windowType "sticky-note" and include the note content in context.content
 - For education intents:
@@ -99,6 +100,10 @@ Few-shot guidance (intent → tool call shape):
 - User: "explain \"binary search\" step by step" → open_window { windowType: "explainer", context: { title: "Binary search", type: "explainer" } }
 - User: "open 5 windows saying hello" → [create 5 separate open_window calls with same content "hello"]
 - User: "close all windows" → close_window { selector: "all" }
+- User: "organize the windows" → organize_windows {}
+- User: "arrange all windows" → organize_windows {}
+- User: "tidy up the screen" → organize_windows {}
+- User: "optimize window layout" → organize_windows {}
 
 IMPORTANT: When user asks to open multiple windows (e.g., "open 5 windows"), create multiple separate tool calls, one for each window.
 

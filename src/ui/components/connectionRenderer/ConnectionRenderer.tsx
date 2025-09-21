@@ -172,7 +172,7 @@ export function ConnectionRenderer({
         if (!animationFrameRef.current) {
           animationFrameRef.current = requestAnimationFrame(() => {
             updateConnectionsDirectly();
-            animationFrameRef.current = undefined;
+            animationFrameRef.current = null;
           });
         }
 

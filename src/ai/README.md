@@ -151,6 +151,29 @@ Closes an existing window by its ID.
 "close window window_123456"
 ```
 
+### organize_windows
+Organizes and optimizes the layout of all open windows on the screen.
+
+**Parameters:**
+None - this tool takes no parameters
+
+**Examples:**
+```
+"organize the windows"
+```
+
+```
+"arrange all windows"
+```
+
+```
+"tidy up the screen"
+```
+
+```
+"optimize window layout"
+```
+
 ## Event System
 
 The AI system communicates with the UI through the event bus:
