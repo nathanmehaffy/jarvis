@@ -1,8 +1,11 @@
 export interface WindowData {
   id: string;
   title: string;
-  component: React.ComponentType;
+  // Components can accept a content prop to receive current content each render
+  component: React.ComponentType<{ content?: string }>;
   content?: string;
+  /** When true, the manager may infer/update the title from content */
+  autoTitle?: boolean;
   isOpen: boolean;
   isMinimized: boolean;
   isFullscreen: boolean;

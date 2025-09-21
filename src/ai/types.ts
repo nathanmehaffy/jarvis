@@ -48,6 +48,16 @@ export interface CloseWindowParams {
   selector?: 'newest' | 'latest' | 'oldest' | 'active' | 'all'; // semantic selector
 }
 
+export interface EditWindowParams {
+  /** Identify window either by id or by title (case-insensitive) */
+  windowId?: string;
+  titleMatch?: string;
+  /** New title to set; omit to leave unchanged */
+  newTitle?: string;
+  /** New content to set; omit to leave unchanged */
+  newContent?: string;
+}
+
 export interface CerebrasRequest {
   model: string;
   messages: Array<{

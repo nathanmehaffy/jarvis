@@ -5,6 +5,8 @@ import { Window } from '../window';
 import { WindowData, WindowManagerState } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
 import { SearchResultsWindow } from '../searchResults';
+import { MarkdownText } from '../markdownText';
+// import { contentSimilarityAnalyzer } from '@/lib/contentSimilarity';
 
 interface WindowManagerProps {
   children: React.ReactNode;
@@ -299,6 +301,29 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
     return { x: scatteredX, y: scatteredY };
   };
 
+  const inferTitleFromContent = (content?: string, fallback: string = 'Window'): string => {
+    const text = (content || '').trim();
+    if (!text) return fallback;
+    // Use first non-empty line up to 80 chars as inferred title
+    const firstLine = text.split(/\n|\r/).map(s => s.trim()).find(Boolean) || fallback;
+    return firstLine.length > 80 ? firstLine.slice(0, 77) + '…' : firstLine;
+  };
+
+  const normalizeTitle = (t?: string): string => {
+    if (!t) return '';
+    const trimmed = String(t).trim().toLowerCase().replace(/^['"]|['"]$/g, '');
+    return trimmed.startsWith('window ')
+      ? trimmed.slice('window '.length)
+      : trimmed;
+  };
+
+  const titlesMatch = (a?: string, b?: string): boolean => {
+    const na = normalizeTitle(a);
+    const nb = normalizeTitle(b);
+    if (!na || !nb) return false;
+    return na === nb || na.includes(nb) || nb.includes(na);
+  };
+
   const openWindow = (windowData: Omit<WindowData, 'isOpen' | 'zIndex'>) => {
     console.log('🪟 [WindowManager] openWindow STARTED', {
       windowData: windowData,
@@ -329,8 +354,12 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         timestamp: new Date().toISOString()
       });
 
+      const inferredTitle = inferTitleFromContent(windowData.content, windowData.title);
+
       const newWindow = {
         ...windowData,
+        title: windowData.title || inferredTitle,
+        autoTitle: !windowData.title,
         x: optimalPosition.x,
         y: optimalPosition.y,
         isOpen: true,
@@ -575,8 +604,12 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
           component = () => <SearchResultsWindow content={content} />;
         } else {
           console.log('📄 [WindowManager] Creating generic window component');
-          component = () => (
-            <div className="p-4 text-cyan-200 text-sm whitespace-pre-wrap">{content}</div>
+          component = ({ content }: { content?: string }) => (
+            <div className="p-4">
+              <MarkdownText className="text-sm">
+                {String(content || '')}
+              </MarkdownText>
+            </div>
           );
         }
 
@@ -619,11 +652,45 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
           ...prev,
           windows: prev.windows.map(w =>
             w.id === data.windowId
-              ? { ...w, content: data.content, title: data.title || w.title }
+              ? {
+                  ...w,
+                  content: data.content,
+                  title: data.title || (w.autoTitle ? inferTitleFromContent(data.content, w.title) : w.title)
+                }
               : w
           )
         }));
 
+        // Re-analyze similarities after a short delay to debounce rapid changes
+        // setTimeout(() => {
+        //   setState(currentState => {
+        //     analyzeWindowSimilarities(currentState.windows, currentState);
+        //     return currentState;
+        //   });
+        // }, 500);
+      }),
+      // Generic window update: supports title/content changes by id or fuzzy title match
+      eventBus.on('ui:update_window', (data: { windowId?: string; titleMatch?: string; newTitle?: string; newContent?: string }) => {
+        const { windowId, titleMatch, newTitle, newContent } = data || {} as any;
+        setState(prev => ({
+          ...prev,
+          windows: prev.windows.map(w => {
+            const noSelector = !windowId && !titleMatch;
+            const isTarget = (windowId && w.id === windowId)
+              || (titleMatch && titlesMatch(w.title, String(titleMatch)))
+              || (noSelector && prev.activeWindowId && w.id === prev.activeWindowId);
+            if (!isTarget) return w;
+            const updatedTitle = typeof newTitle === 'string' && newTitle.length > 0
+              ? newTitle
+              : (w.autoTitle && typeof newContent === 'string' ? inferTitleFromContent(newContent, w.title) : w.title);
+            return {
+              ...w,
+              title: updatedTitle,
+              content: typeof newContent === 'string' ? newContent : w.content,
+              autoTitle: newTitle ? false : w.autoTitle
+            };
+          })
+        }));
       })
     ];
     return () => { unsubs.forEach((u) => u()); };
@@ -671,7 +738,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
             onPositionChange={updateWindowPosition}
             animationState={window.animationState}
           >
-            <WindowComponent />
+            <WindowComponent {...(window.content !== undefined ? { content: window.content } : {})} />
           </Window>
         );
       })}

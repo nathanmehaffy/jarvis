@@ -34,7 +34,7 @@ export function Window({
 	const resizeDirectionRef = useRef<string>('');
 	const dragOffsetRef = useRef({ x: 0, y: 0 });
 	const currentPositionRef = useRef({ x: initialX, y: initialY });
-	const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
+	const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0, startX: 0, startY: 0 });
 	const lastUpdateRef = useRef(0);
 	const lastPositionChangeRef = useRef(0);
 
@@ -113,29 +113,70 @@ export function Window({
 
 			let newWidth = resizeStartRef.current.width;
 			let newHeight = resizeStartRef.current.height;
-			let newX = position.x;
-			let newY = position.y;
+			let newX = resizeStartRef.current.startX;
+			let newY = resizeStartRef.current.startY;
 
-			if (direction.includes('right')) {
-				newWidth = Math.max(200, resizeStartRef.current.width + deltaX);
-			}
-			if (direction.includes('left')) {
-				newWidth = Math.max(200, resizeStartRef.current.width - deltaX);
-				newX = resizeStartRef.current.x + (resizeStartRef.current.width - newWidth);
-			}
-			if (direction.includes('bottom')) {
-				newHeight = Math.max(150, resizeStartRef.current.height + deltaY);
-			}
-			if (direction.includes('top')) {
-				newHeight = Math.max(150, resizeStartRef.current.height - deltaY);
-				newY = resizeStartRef.current.y + (resizeStartRef.current.height - newHeight);
+			if (lockAspectRatio) {
+				const aspectRatio = resizeStartRef.current.width / resizeStartRef.current.height;
+				
+				// Handle each corner direction properly
+				let sizeDelta = 0;
+				
+				if (direction === 'bottom-right') {
+					// Bottom-right: both deltas should be positive for growth
+					sizeDelta = Math.max(Math.abs(deltaX), Math.abs(deltaY)) * ((deltaX + deltaY) >= 0 ? 1 : -1);
+					newWidth = Math.max(100, resizeStartRef.current.width + sizeDelta);
+					newHeight = newWidth / aspectRatio;
+					// Position stays the same (top-left anchor)
+					
+				} else if (direction === 'bottom-left') {
+					// Bottom-left: deltaY positive, deltaX negative for growth
+					sizeDelta = Math.max(Math.abs(deltaX), Math.abs(deltaY)) * ((deltaY - deltaX) >= 0 ? 1 : -1);
+					newWidth = Math.max(100, resizeStartRef.current.width + sizeDelta);
+					newHeight = newWidth / aspectRatio;
+					// Adjust X position (right edge stays fixed)
+					newX = resizeStartRef.current.startX - (newWidth - resizeStartRef.current.width);
+					
+				} else if (direction === 'top-right') {
+					// Top-right: deltaX positive, deltaY negative for growth  
+					sizeDelta = Math.max(Math.abs(deltaX), Math.abs(deltaY)) * ((deltaX - deltaY) >= 0 ? 1 : -1);
+					newWidth = Math.max(100, resizeStartRef.current.width + sizeDelta);
+					newHeight = newWidth / aspectRatio;
+					// Adjust Y position (bottom edge stays fixed)
+					newY = resizeStartRef.current.startY - (newHeight - resizeStartRef.current.height);
+					
+				} else if (direction === 'top-left') {
+					// Top-left: both deltas should be negative for growth
+					sizeDelta = Math.max(Math.abs(deltaX), Math.abs(deltaY)) * ((-deltaX - deltaY) >= 0 ? 1 : -1);
+					newWidth = Math.max(100, resizeStartRef.current.width + sizeDelta);
+					newHeight = newWidth / aspectRatio;
+					// Adjust both X and Y positions (bottom-right stays fixed)
+					newX = resizeStartRef.current.startX - (newWidth - resizeStartRef.current.width);
+					newY = resizeStartRef.current.startY - (newHeight - resizeStartRef.current.height);
+				}
+
+			} else {
+				// Non-aspect-ratio-locked resizing
+				if (direction.includes('right')) {
+					newWidth = Math.max(200, resizeStartRef.current.width + deltaX);
+				}
+				if (direction.includes('left')) {
+					newWidth = Math.max(200, resizeStartRef.current.width - deltaX);
+					newX = resizeStartRef.current.startX + (resizeStartRef.current.width - newWidth);
+				}
+				if (direction.includes('bottom')) {
+					newHeight = Math.max(150, resizeStartRef.current.height + deltaY);
+				}
+				if (direction.includes('top')) {
+					newHeight = Math.max(150, resizeStartRef.current.height - deltaY);
+					newY = resizeStartRef.current.startY + (resizeStartRef.current.height - newHeight);
+				}
 			}
 
+			// Direct updates - no animation frames needed for responsiveness
 			setSize({ width: newWidth, height: newHeight });
-			if (newX !== position.x || newY !== position.y) {
-				setPosition({ x: newX, y: newY });
-				currentPositionRef.current = { x: newX, y: newY };
-			}
+			setPosition({ x: newX, y: newY });
+			currentPositionRef.current = { x: newX, y: newY };
 		}
 	};
 
@@ -162,7 +203,9 @@ export function Window({
 			x: e.clientX,
 			y: e.clientY,
 			width: size.width,
-			height: size.height
+			height: size.height,
+			startX: position.x,
+			startY: position.y
 		};
 
 		document.addEventListener('mousemove', onMouseMove);
@@ -190,7 +233,7 @@ export function Window({
 		}
 
 		const activeClasses = isActive
-			? 'ring-2 ring-cyan-400/50 shadow-cyan-400/30 border-cyan-400/60 shadow-cyan-400/40'
+			? 'shadow-cyan-400/30 border-cyan-400/60 shadow-cyan-400/40'
 			: 'shadow-black/40';
 
 		switch (animationState) {
@@ -265,17 +308,26 @@ export function Window({
 					</div>
 				</div>
 			) : (
-				<div className="absolute top-3 right-3 flex space-x-2 z-30">
-					<button
-						onClick={onClose}
-						className="w-6 h-6 rounded-full bg-red-500/40 hover:bg-red-600/60 backdrop-blur-sm flex items-center justify-center transition-all duration-200 hover:scale-110"
-						title="Close"
-					>
-						<svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-						</svg>
-					</button>
-				</div>
+				<>
+					{/* Draggable area for minimal header windows - LOWER z-index than resize handles */}
+					<div 
+						className="absolute inset-6 cursor-move z-20"
+						onMouseDown={onMouseDown}
+						style={{ pointerEvents: 'auto' }}
+					/>
+					<div className="absolute top-3 right-3 flex space-x-2 z-30">
+						<button
+							onClick={onClose}
+							className="w-6 h-6 rounded-full bg-red-500/40 hover:bg-red-600/60 backdrop-blur-sm flex items-center justify-center transition-all duration-200 hover:scale-110"
+							title="Close"
+							onMouseDown={(e) => e.stopPropagation()}
+						>
+							<svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+							</svg>
+						</button>
+					</div>
+				</>
 			)}
 			{!isMinimized && (
 				<div className={`w-full bg-black/30 backdrop-blur-sm border-t border-cyan-400/20 ${isFullscreen ? 'h-[calc(100vh-40px)]' : 'h-[calc(100%-40px)]'}`}>
@@ -285,20 +337,38 @@ export function Window({
 				</div>
 			)}
 
-			{/* Resize handles - only show when resizable, not minimized and not fullscreen */}
+			{/* Resize handles - Subtle corner handles only */}
 			{resizable && !isMinimized && !isFullscreen && (
 				<>
-					{/* Corner handles */}
-					<div className="absolute top-0 left-0 w-4 h-4 cursor-nw-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/20 hover:bg-cyan-400/40 hover:shadow-cyan-400/50 hover:shadow-md rounded-br-lg" onMouseDown={(e) => onResizeStart(e, 'top-left')} />
-					<div className="absolute top-0 right-0 w-4 h-4 cursor-ne-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/20 hover:bg-cyan-400/40 hover:shadow-cyan-400/50 hover:shadow-md rounded-bl-lg" onMouseDown={(e) => onResizeStart(e, 'top-right')} />
-					<div className="absolute bottom-0 left-0 w-4 h-4 cursor-sw-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/20 hover:bg-cyan-400/40 hover:shadow-cyan-400/50 hover:shadow-md rounded-tr-lg" onMouseDown={(e) => onResizeStart(e, 'bottom-left')} />
-					<div className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/30 hover:bg-cyan-400/50 hover:shadow-cyan-400/50 hover:shadow-md rounded-tl-lg" onMouseDown={(e) => onResizeStart(e, 'bottom-right')} />
-
-					{/* Edge handles */}
-					<div className="absolute top-0 left-4 right-4 h-2 cursor-n-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/10 hover:bg-cyan-400/30 hover:shadow-cyan-400/20 hover:shadow-sm" onMouseDown={(e) => onResizeStart(e, 'top')} />
-					<div className="absolute bottom-0 left-4 right-4 h-2 cursor-s-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/10 hover:bg-cyan-400/30 hover:shadow-cyan-400/20 hover:shadow-sm" onMouseDown={(e) => onResizeStart(e, 'bottom')} />
-					<div className="absolute top-4 bottom-4 left-0 w-2 cursor-w-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/10 hover:bg-cyan-400/30 hover:shadow-cyan-400/20 hover:shadow-sm" onMouseDown={(e) => onResizeStart(e, 'left')} />
-					<div className="absolute top-4 bottom-4 right-0 w-2 cursor-e-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/10 hover:bg-cyan-400/30 hover:shadow-cyan-400/20 hover:shadow-sm" onMouseDown={(e) => onResizeStart(e, 'right')} />
+					{/* Corner handles - Subtle diagonal lines */}
+					<div 
+						className="absolute top-0 left-0 w-4 h-4 cursor-nw-resize z-40 transition-all duration-200" 
+						onMouseDown={(e) => onResizeStart(e, 'top-left')}
+						style={{
+							background: 'linear-gradient(-45deg, transparent 40%, rgba(34, 211, 238, 0.6) 40%, rgba(34, 211, 238, 0.6) 60%, transparent 60%)'
+						}}
+					/>
+					<div 
+						className="absolute top-0 right-0 w-4 h-4 cursor-ne-resize z-40 transition-all duration-200" 
+						onMouseDown={(e) => onResizeStart(e, 'top-right')}
+						style={{
+							background: 'linear-gradient(45deg, transparent 40%, rgba(34, 211, 238, 0.6) 40%, rgba(34, 211, 238, 0.6) 60%, transparent 60%)'
+						}}
+					/>
+					<div 
+						className="absolute bottom-0 left-0 w-4 h-4 cursor-sw-resize z-40 transition-all duration-200" 
+						onMouseDown={(e) => onResizeStart(e, 'bottom-left')}
+						style={{
+							background: 'linear-gradient(45deg, transparent 40%, rgba(34, 211, 238, 0.6) 40%, rgba(34, 211, 238, 0.6) 60%, transparent 60%)'
+						}}
+					/>
+					<div 
+						className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize z-40 transition-all duration-200" 
+						onMouseDown={(e) => onResizeStart(e, 'bottom-right')}
+						style={{
+							background: 'linear-gradient(-45deg, transparent 40%, rgba(34, 211, 238, 0.6) 40%, rgba(34, 211, 238, 0.6) 60%, transparent 60%)'
+						}}
+					/>
 				</>
 			)}
 		</div>

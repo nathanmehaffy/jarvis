@@ -97,6 +97,13 @@ export class ToolExecutor {
           result = await this.executeSearch(task);
           break;
 
+        case 'organize_windows':
+          result = await this.executeOrganizeWindows(task);
+          break;
+
+        case 'edit_window':
+          result = await this.executeEditWindow(task, uiContext);
+          break;
         default:
           console.error('⚠️ [ToolExecutor] Unknown tool requested', { tool: task.tool });
           throw new Error(`Unknown tool: ${task.tool}`);
@@ -453,6 +460,96 @@ export class ToolExecutor {
       throw new Error(`Search execution failed: ${errorMsg}`);
     }
   }
+
+  private async executeOrganizeWindows(task: Task): Promise<ExecutionResult> {
+    eventBus.emit('ai:tool_call_started', { task, tool: 'organize_windows', params: task.parameters });
+
+    // Emit organize event to the UI
+    eventBus.emit('ui:organize_windows');
+
+    // If running inside a Web Worker, forward to the main thread
+    try {
+      if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
+        (self as any).postMessage({ type: 'UI_ORGANIZE_WINDOWS', data: {} });
+      }
+    } catch (_) {
+      // no-op
+    }
+
+    console.log(`[ToolExecutor] Organizing windows`);
+
+    const result = {
+      taskId: task.id,
+      success: true,
+      result: {
+        action: 'organize_windows',
+        message: 'Windows organized successfully'
+      },
+      timestamp: Date.now()
+    };
+    eventBus.emit('ai:tool_call_completed', { task, tool: 'organize_windows', result });
+    return result;
+  }
+
+  private async executeEditWindow(task: Task, uiContext?: any): Promise<ExecutionResult> {
+    const params = task.parameters as any; // EditWindowParams-like
+    eventBus.emit('ai:tool_call_started', { task, tool: 'edit_window', params });
+
+    // Resolve target by id or title match
+    let targetWindowId = params.windowId as string | undefined;
+    if (!targetWindowId && params.titleMatch) {
+      const windows: Array<{ id: string; title: string }>
+        = Array.isArray(uiContext?.windows) ? uiContext.windows : [];
+      const normalize = (s: string) => s.trim().toLowerCase().replace(/^['"]|['"]$/g, '');
+      const stripWindowPrefix = (s: string) => s.startsWith('window ') ? s.slice('window '.length) : s;
+      const target = stripWindowPrefix(normalize(String(params.titleMatch)));
+      const found = windows.find(w => {
+        const wt = stripWindowPrefix(normalize(String(w.title || '')));
+        return wt === target || wt.includes(target) || target.includes(wt);
+      });
+      targetWindowId = found?.id;
+    }
+
+    // If neither provided, default to active window from uiContext
+    if (!targetWindowId && !params.titleMatch) {
+      const activeId = typeof uiContext?.activeWindowId === 'string' ? uiContext.activeWindowId : undefined;
+      if (activeId) {
+        targetWindowId = activeId;
+      }
+    }
+
+    if (!targetWindowId && !params.titleMatch) {
+      throw new Error('No target window found to edit');
+    }
+
+    // Emit UI update
+    const updateData = {
+      windowId: targetWindowId,
+      titleMatch: !targetWindowId ? String(params.titleMatch || '') : undefined,
+      newTitle: typeof params.newTitle === 'string' ? params.newTitle : undefined,
+      newContent: typeof params.newContent === 'string' ? params.newContent : undefined,
+      timestamp: Date.now()
+    };
+
+    eventBus.emit('ui:update_window', updateData);
+
+    // Worker forward if needed
+    try {
+      if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
+        (self as any).postMessage({ type: 'UI_UPDATE_WINDOW', data: updateData });
+      }
+    } catch (_) {}
+
+    const result = {
+      taskId: task.id,
+      success: true,
+      result: { updated: true, targetWindowId: targetWindowId || null, viaTitle: !targetWindowId && !!params.titleMatch },
+      timestamp: Date.now()
+    };
+    eventBus.emit('ai:tool_call_completed', { task, tool: 'edit_window', result });
+    return result;
+  }
+
 
   private generateWindowId(): string {
     return `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

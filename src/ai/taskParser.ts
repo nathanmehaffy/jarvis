@@ -37,7 +37,15 @@ export class TaskParser {
       '4. If you find new, complete commands, respond with a JSON object containing a `new_tool_calls` array.',
       '5. Each tool call in the array MUST include a `sourceText` property, containing the exact phrase from the transcript that justifies the action.',
       '6. If there are no new commands, or if a command is incomplete (e.g., "open a graph showing..."), respond with an empty `new_tool_calls` array.',
-      '7. DO NOT re-issue tool calls for commands that are already present in the `actionHistory`.'
+      '7. DO NOT re-issue tool calls for commands that are already present in the `actionHistory`.',
+      '',
+      'Command patterns to detect in addition to standard open/close/organize:',
+      '- Edit window: examples',
+      '  * "Edit window \"Green Tomatoes\" to say I love green tomatoes" → edit_window { titleMatch: "Green Tomatoes", newContent: "I love green tomatoes" }',
+      '  * "Edit window \"Budget\" title to Monthly Budget" → edit_window { titleMatch: "Budget", newTitle: "Monthly Budget" }',
+      '  * "Edit window id abc123 set title Project Plan" → edit_window { windowId: "abc123", newTitle: "Project Plan" }',
+      '',
+      'When editing windows, prefer matching by exact title (case-insensitive) when an id is not provided. Only include fields that are actually specified by the user.'
     ].join('\n');
 
     const jsonPayload = {
@@ -94,18 +102,92 @@ export class TaskParser {
       }
     };
 
-    let result = coerce(content);
+    const llmCalls = coerce(content).new_tool_calls;
+
+    // Local fallbacks: detect common edit-window phrasing to avoid depending solely on LLM
+    const localCalls: Array<{ tool: string; parameters: any; sourceText: string }> = [];
+
+    const detectLocalEdits = (text: string) => {
+      const t = text.toLowerCase();
+      const raw = text;
+
+      const pushCall = (params: any, source: string) => {
+        localCalls.push({ tool: 'edit_window', parameters: params, sourceText: source });
+      };
+
+      // 1) edit window "Title" to say ... / to ...
+      const reQuoted = /edit\s+(?:the\s+)?window\s+"([^"]+)"\s+(?:to\s+(?:say\s+)?)((?:.|\n|\r)+)$/i;
+      const mQuoted = raw.match(reQuoted);
+      if (mQuoted) {
+        const [, title, newText] = mQuoted;
+        const contentText = newText.trim();
+        if (contentText) pushCall({ titleMatch: title, newContent: contentText }, mQuoted[0]);
+      }
+
+      // 2) edit the window about X to say ... / to ...
+      const reAbout = /edit\s+(?:the\s+)?window\s+about\s+([a-z0-9\-\s]+?)\s+(?:to\s+(?:say\s+)?)((?:.|\n|\r)+)$/i;
+      const mAbout = raw.match(reAbout);
+      if (mAbout) {
+        const [, about, newText] = mAbout;
+        const contentText = newText.trim();
+        if (contentText) pushCall({ titleMatch: `window ${about.trim()}` }, mAbout[0]);
+        if (contentText) {
+          // include newContent
+          localCalls[localCalls.length - 1].parameters.newContent = contentText;
+        }
+      }
+
+      // 3) change/edit window "Title" title to NewTitle
+      const reTitleQuoted = /(edit|change)\s+(?:the\s+)?window\s+"([^"]+)"\s+(?:title|name)\s+to\s+(.+)$/i;
+      const mTitleQ = raw.match(reTitleQuoted);
+      if (mTitleQ) {
+        const [, , title, newTitle] = mTitleQ;
+        const nt = newTitle.trim();
+        if (nt) pushCall({ titleMatch: title, newTitle: nt }, mTitleQ[0]);
+      }
+
+      // 4) change/edit the window about X title to NewTitle
+      const reTitleAbout = /(edit|change)\s+(?:the\s+)?window\s+about\s+([a-z0-9\-\s]+?)\s+(?:title|name)\s+to\s+(.+)$/i;
+      const mTitleA = raw.match(reTitleAbout);
+      if (mTitleA) {
+        const [, , about, newTitle] = mTitleA;
+        const nt = newTitle.trim();
+        if (nt) pushCall({ titleMatch: `window ${about.trim()}`, newTitle: nt }, mTitleA[0]);
+      }
+    };
+
+    detectLocalEdits(fullTranscript);
+
+    // Deduplicate against actionHistory and llm calls
+    const seenKeys = new Set<string>(
+      (Array.isArray(actionHistory) ? actionHistory : []).map(a => {
+        try { return `${a.tool}:${JSON.stringify(a.parameters || {})}`; } catch { return `${a.tool}:x`; }
+      })
+    );
+
+    const merge = (arr: Array<{ tool: string; parameters: any; sourceText: string }>) => arr.filter(c => {
+      try {
+        const key = `${c.tool}:${JSON.stringify(c.parameters || {})}`;
+        if (seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+      } catch { return true; }
+    });
+
+    const merged = [...merge(localCalls), ...merge(llmCalls)];
 
     console.log('🔧 [TaskParser] LLM Response coerced to result', {
       rawContent: content,
-      parsedResult: result,
-      toolCallsFound: result.new_tool_calls.length,
+      llmCalls: llmCalls.length,
+      localCalls: localCalls.length,
+      mergedCalls: merged.length,
       timestamp: new Date().toISOString()
     });
 
-    // Fallback parsing for search commands if Cerebras didn't find any
-    if (result.new_tool_calls.length === 0) {
-      console.log('🔍 [TaskParser] No tool calls from LLM, trying fallback search parsing');
+    // Fallback parsing for search commands if no tool calls found
+    let finalResult = { new_tool_calls: merged };
+    if (finalResult.new_tool_calls.length === 0) {
+      console.log('🔍 [TaskParser] No tool calls from LLM or local parsing, trying fallback search parsing');
       const searchPatterns = [
         /search\s+(?:for\s+)?(.+)/i,
         /find\s+(?:information\s+)?(?:about\s+)?(.+)/i,
@@ -117,7 +199,7 @@ export class TaskParser {
         const match = fullTranscript.match(pattern);
         if (match && match[1]) {
           const query = match[1].trim();
-          result = {
+          finalResult = {
             new_tool_calls: [{
               tool: 'search',
               parameters: { query },
@@ -136,12 +218,12 @@ export class TaskParser {
     }
 
     console.log('✅ [TaskParser] parseTextToTasks COMPLETED', {
-      finalResult: result,
-      toolCallsToExecute: result.new_tool_calls.length,
+      finalResult: finalResult,
+      toolCallsToExecute: finalResult.new_tool_calls.length,
       timestamp: new Date().toISOString()
     });
 
-    return result;
+    return finalResult;
   }
 
   private generateTaskDescription(toolName: string, parameters: any): string {
