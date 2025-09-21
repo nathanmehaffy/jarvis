@@ -465,6 +465,129 @@ export function MainUI() {
     openImageViewerWindow(preloadedImageUrl, imageName);
   };
 
+  const testResizingFeatures = () => {
+    // Test with different aspect ratio images
+    const testImages = [
+      { url: 'https://picsum.photos/800/400?random=1', name: 'Wide Image (2:1 ratio)' },
+      { url: 'https://picsum.photos/400/600?random=2', name: 'Tall Image (2:3 ratio)' },
+      { url: 'https://picsum.photos/500/500?random=3', name: 'Square Image (1:1 ratio)' },
+      { url: 'https://picsum.photos/1200/300?random=4', name: 'Ultra-wide Image (4:1 ratio)' }
+    ];
+
+    // Open multiple images with different aspect ratios
+    testImages.forEach((img, index) => {
+      setTimeout(() => {
+        openImageViewerWindow(img.url, img.name);
+      }, index * 200); // Stagger the opening
+    });
+
+    // Show instructions
+    eventBus.emit('system:output', {
+      text: `# 🎯 **4-Corner Resizing Test**
+
+## ✨ **Test Instructions:**
+
+### **What to Test:**
+1. **4-Corner Resize Handles** - Hover over any corner of an image window
+2. **Aspect Ratio Lock** - Resize from corners and watch the image maintain proportions
+3. **Edge Resizing** - Try resizing from edges (top, bottom, left, right)
+4. **Different Ratios** - Test with wide, tall, square, and ultra-wide images
+
+### **Expected Behavior:**
+- ✅ **Corner resize**: Maintains **aspect ratio** perfectly
+- ✅ **Edge resize**: Also maintains **aspect ratio** 
+- ✅ **Smooth operation**: No jumping or glitching
+- ✅ **Position stability**: Window stays in place during resize
+
+### **How to Resize:**
+1. **Hover** over any **corner** of an image window
+2. **Click and drag** to resize
+3. **Notice** how the image **maintains its proportions**
+4. **Try all 4 corners**: Top-left, top-right, bottom-left, bottom-right
+
+### **Test Images Opened:**
+- 🖼️ **Wide Image** (2:1 aspect ratio)
+- 🖼️ **Tall Image** (2:3 aspect ratio)  
+- 🖼️ **Square Image** (1:1 aspect ratio)
+- 🖼️ **Ultra-wide Image** (4:1 aspect ratio)
+
+**Perfect aspect ratio preservation on all corners!** 🎉`
+    });
+  };
+
+  const testMarkdownFeatures = () => {
+    // Test system output with markdown
+    eventBus.emit('system:output', {
+      text: `# 🎉 **Markdown Support Enabled!**
+
+## ✨ **Features Available:**
+
+### **Text Formatting**
+- **Bold text** with \`**bold**\`
+- *Italic text* with \`*italic*\`
+- ***Bold and italic*** with \`***both***\`
+- \`Inline code\` with backticks
+
+### **Code Blocks**
+\`\`\`typescript
+const markdown = "awesome";
+console.log(\`Markdown is \${markdown}!\`);
+\`\`\`
+
+### **Lists**
+1. **Ordered lists** work perfectly
+2. ***With formatting*** inside
+3. \`Code in lists\` too!
+
+- ✅ **Unordered lists**
+- ⚠️ *With emojis*
+- 🚀 \`And code snippets\`
+
+### **Quotes & Tables**
+> **Important**: This is a blockquote with ***formatting***!
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Bold** | ✅ | Working |
+| *Italic* | ✅ | Working |
+| \`Code\` | ✅ | Working |
+
+---
+
+## 🎯 **Try It Out:**
+1. Open **User Notes** window
+2. Click **👁️ Preview** button  
+3. Type some markdown and see it render!
+
+**Enjoy your enhanced Jarvis experience!** 🤖✨`
+    });
+
+    // Test dynamic window with markdown content
+    eventBus.emit('ui:open_window', {
+      id: 'markdown-demo',
+      title: '📝 Markdown Demo Window',
+      content: `# Welcome to Markdown Windows!
+
+This is a **dynamic window** with ***full markdown support***!
+
+## What you can do:
+- Write **bold** and *italic* text
+- Add \`inline code\` snippets
+- Create lists and tables
+- Use > blockquotes for emphasis
+
+\`\`\`javascript
+// Even code blocks work!
+function sayHello() {
+  console.log("Hello, Markdown World! 🌍");
+}
+\`\`\`
+
+> **Pro Tip**: The UserNotes window has a preview mode toggle! ✨`,
+      size: { width: 600, height: 500 }
+    });
+  };
+
   return (
     <div className="min-h-screen">
       {/* Global AI loading indicator */}
@@ -747,6 +870,26 @@ export function MainUI() {
                 <div className="flex items-center">
                   <div className="w-3 h-3 bg-teal-400 rounded-full mr-3 group-hover:animate-pulse"></div>
                   <span className="font-semibold">Open Sample Image</span>
+                </div>
+              </button>
+              
+              <button
+                onClick={testMarkdownFeatures}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-purple-500/60 to-pink-600/60 hover:from-purple-500/80 hover:to-pink-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10 mt-4"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-purple-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">🎉 Test Markdown Features</span>
+                </div>
+              </button>
+              
+              <button
+                onClick={testResizingFeatures}
+                className="group block w-full px-6 py-4 bg-gradient-to-r from-orange-500/60 to-red-600/60 hover:from-orange-500/80 hover:to-red-600/80 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl backdrop-blur-sm border border-white/10 mt-4"
+              >
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-orange-400 rounded-full mr-3 group-hover:animate-pulse"></div>
+                  <span className="font-semibold">🎯 Test 4-Corner Resizing</span>
                 </div>
               </button>
             </div>

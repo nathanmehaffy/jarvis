@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { eventBus } from '@/lib/eventBus';
 import { SystemOutputState, SystemOutputProps } from './systemOutput.types';
+import { MarkdownText } from '../markdownText';
 
 export function SystemOutput({
   placeholder = 'System messages will appear here...'
@@ -66,19 +67,17 @@ export function SystemOutput({
         </div>
       </div>
 
-      {/* Notes Area - absolute maximum space */}
-      <div className="flex-1 px-1 py-1">
-        <textarea
-          ref={textareaRef}
-          value={notes.content}
-          readOnly
-          placeholder={placeholder}
-          className="w-full h-full resize-none border-none outline-none bg-transparent text-cyan-200 leading-relaxed text-sm cursor-default placeholder-cyan-400/60"
-          style={{
-            fontFamily: 'system-ui, -apple-system, sans-serif',
-            lineHeight: '1.6'
-          }}
-        />
+      {/* Notes Area - absolute maximum space with markdown support */}
+      <div className="flex-1 px-2 py-2 overflow-y-auto">
+        {notes.content ? (
+          <MarkdownText className="text-sm leading-relaxed">
+            {notes.content}
+          </MarkdownText>
+        ) : (
+          <div className="text-cyan-400/60 text-sm italic">
+            {placeholder}
+          </div>
+        )}
       </div>
 
       {/* Footer - absolute minimal */}

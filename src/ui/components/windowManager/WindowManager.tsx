@@ -4,6 +4,7 @@ import { useEffect, useState, forwardRef, useImperativeHandle, useRef } from 're
 import { Window } from '../window';
 import { WindowData, WindowManagerState } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
+import { MarkdownText } from '../markdownText';
 // import { contentSimilarityAnalyzer } from '@/lib/contentSimilarity';
 
 interface WindowManagerProps {
@@ -598,7 +599,11 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
           title,
           content: String(data?.content || ''),
           component: () => (
-            <div className="p-4 text-cyan-200 text-sm whitespace-pre-wrap">{String(data?.content || '')}</div>
+            <div className="p-4">
+              <MarkdownText className="text-sm">
+                {String(data?.content || '')}
+              </MarkdownText>
+            </div>
           ),
           isMinimized: false,
           isFullscreen: false,
