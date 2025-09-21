@@ -563,22 +563,9 @@ export function MainUI() {
           )}
         </div>
 
-        {/* Debug toggle button - Bottom right */}
-        <div className="fixed bottom-4 right-4 z-50">
-          <button
-            onClick={() => setShowDebugSidebar(v => !v)}
-            className="w-12 h-12 bg-black/40 hover:bg-black/60 text-white rounded-full border border-white/20 shadow-xl flex items-center justify-center transition-all duration-200"
-            title={showDebugSidebar ? 'Hide Debug Sidebar' : 'Show Debug Sidebar'}
-          >
-            {/* Bug icon */}
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M3 13h4m10 0h4M5 17l2-2m10 2l-2-2M5 9l2 2m10-2l-2 2M12 6a5 5 0 00-5 5v4a5 5 0 0010 0v-4a5 5 0 00-5-5z" />
-            </svg>
-          </button>
-        </div>
 
-        {/* Desktop Content */}
-        <div className="absolute top-6 left-6 z-10">
+        {/* Desktop Content - Hidden */}
+        <div className="hidden absolute top-6 left-6 z-10">
           {isDesktopMinimized ? (
             /* Minimized - Circular Icon */
             <button

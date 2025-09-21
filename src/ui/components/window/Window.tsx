@@ -265,17 +265,26 @@ export function Window({
 					</div>
 				</div>
 			) : (
-				<div className="absolute top-3 right-3 flex space-x-2 z-30">
-					<button
-						onClick={onClose}
-						className="w-6 h-6 rounded-full bg-red-500/40 hover:bg-red-600/60 backdrop-blur-sm flex items-center justify-center transition-all duration-200 hover:scale-110"
-						title="Close"
-					>
-						<svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-						</svg>
-					</button>
-				</div>
+				<>
+					{/* Invisible draggable area for minimal header windows */}
+					<div 
+						className="absolute inset-0 cursor-move z-10"
+						onMouseDown={onMouseDown}
+						style={{ pointerEvents: 'auto' }}
+					/>
+					<div className="absolute top-3 right-3 flex space-x-2 z-30">
+						<button
+							onClick={onClose}
+							className="w-6 h-6 rounded-full bg-red-500/40 hover:bg-red-600/60 backdrop-blur-sm flex items-center justify-center transition-all duration-200 hover:scale-110"
+							title="Close"
+							onMouseDown={(e) => e.stopPropagation()}
+						>
+							<svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+							</svg>
+						</button>
+					</div>
+				</>
 			)}
 			{!isMinimized && (
 				<div className={`w-full bg-black/30 backdrop-blur-sm border-t border-cyan-400/20 ${isFullscreen ? 'h-[calc(100vh-40px)]' : 'h-[calc(100%-40px)]'}`}>
