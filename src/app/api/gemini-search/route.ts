@@ -18,15 +18,29 @@ export async function POST(request: NextRequest) {
 
     console.log('[API] Making Gemini API request', { query });
 
-    const prompt = `You are a world-class research assistant. Your goal is to provide a clear, well-structured, and informative answer to the user's query: "${query}"
+    const prompt = `You are a search assistant for Jarvis. Given the user's query, generate a comprehensive but concise response using real-time search results. Structure output as markdown for readability.
 
-Guidelines:
-1.  **Answer Directly:** Start with a concise, direct summary that answers the core question.
-2.  **Structure with Markdown:** Use Markdown for all formatting. Use headings (#, ##), bold text, and bullet points to create a readable and organized response.
-3.  **Key Information:** After the summary, create sections for key details, important facts, different perspectives, or relevant sub-topics.
-4.  **Actionable & Informative:** The response should be dense with information, not conversational fluff.
-5.  **Cite When Possible:** If you are drawing information from a specific, verifiable public source (like a major news article, research paper, or official website), you can add a link at the end of the relevant sentence.
-6.  **Current Events:** If the topic is rapidly developing, add a brief note at the end that information may change.`;
+Query: \${query}
+
+Rules:
+- Start with a direct answer.
+- Use bullet points for lists.
+- Cite sources with [1], [2], etc.
+- Keep response under 1000 words.
+- If query implies tools, suggest them but don't execute.
+
+Example:
+Query: Best AI tools 2025
+Output: # Top AI Tools for 2025
+
+Based on current trends:
+
+- **Grok**: Advanced reasoning [1]
+- **Claude**: Creative writing [2]
+
+Sources:
+[1] x.ai
+[2] anthropic.com`;
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${process.env.GEMINI_API_KEY}`, {
       method: 'POST',

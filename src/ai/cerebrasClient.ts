@@ -60,47 +60,37 @@ export class CerebrasClient {
 
 
   async parseTextToTools(text: string, tools: Tool[], uiState: string): Promise<CerebrasResponse> {
-    const systemPrompt = `You are Jarvis, an AI assistant that converts natural language commands into structured tool calls.
+    const systemPrompt = `You are a task extraction specialist for Jarvis. Convert the user command into a minimal, sequential list of tool calls using ONLY the listed tools.
 
-${uiState}
+ABSOLUTE OUTPUT CONTRACT (NO EXCEPTIONS):
+- Respond with ONE valid JSON ARRAY only, with EXACTLY this shape:
+  [ { "tool": string, "parameters": object } ]
+- Do NOT include explanations, prose, markdown, code fences, logging, comments, or any other keys.
+- If there are no actions, return exactly: []
+- Each array item MUST include both keys: "tool" (string) and "parameters" (object).
+- Keys must use double quotes. Do NOT use single quotes. Do NOT trail commas. Ensure strict JSON.
 
-Available tools:
-${tools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
+User command: \${text}
 
-Your job is to:
-1. Analyze the user's text input and the current UI state.
-2. Identify what actions they want to perform.
-3. Convert those actions into appropriate tool calls.
-4. When closing a window, use the ID from the list of open windows.
-5. Handle complex multi-command requests by breaking them into multiple tool calls.
-6. Do not invent placeholder content like "hello world" or "none". If content is unspecified, leave context.content empty.
+Available tools (reference only):
+\${tools.map(tool => \`- \${tool.name}: \${tool.description}\`).join('\\n')}
 
-For window operations:
-- When opening windows, infer appropriate window types (sticky-note, notification, dialog, settings, general, lesson, quiz, hint, explainer)
-- When user asks to organize, arrange, tidy up, optimize, or clean up windows, use the organize_windows tool
-- Extract relevant context like titles, content, and any positioning hints
-- For sticky notes, use windowType "sticky-note" and include the note content in context.content
-- For education intents:
-  * "lesson" or "start lesson" → windowType "lesson"; set context.title and optional context.metadata.step
-  * "quiz" → windowType "quiz"; set context.title from the prompt
-  * "hint" → windowType "hint"; set context.title to the topic and context.content to the short hint text if provided
-  * "explain" / "step by step" → windowType "explainer"; set context.title to the topic and include brief explanatory content if available
+Current UI state (reference for window IDs/titles):
+\${uiState}
 
-Few-shot guidance (intent → tool call shape):
-- User: "start lesson \"Derivatives\" step 1" → open_window { windowType: "lesson", context: { title: "Derivatives", type: "lesson", metadata: { step: 1 } } }
-- User: "open a quiz titled \"Chapter 3 Review\"" → open_window { windowType: "quiz", context: { title: "Chapter 3 Review", type: "quiz" } }
-- User: "give me a hint about \"Pythagorean theorem\"" → open_window { windowType: "hint", context: { title: "Pythagorean theorem", content: "a^2 + b^2 = c^2", type: "hint" } }
-- User: "explain \"binary search\" step by step" → open_window { windowType: "explainer", context: { title: "Binary search", type: "explainer" } }
-- User: "open 5 windows saying hello" → [create 5 separate open_window calls with same content "hello"]
-- User: "close all windows" → close_window { selector: "all" }
-- User: "organize the windows" → organize_windows {}
-- User: "arrange all windows" → organize_windows {}
-- User: "tidy up the screen" → organize_windows {}
-- User: "optimize window layout" → organize_windows {}
+Decision Rules:
+- Choose the most specific tool; use "search" only if no other tool fits.
+- Parameters must match the tool schema exactly; omit optional fields unless clearly provided.
+- Reference existing windows by ID if present in UI context; otherwise provide a reliable title match in parameters if supported.
+- For multi-step intents, return multiple items in order.
+- Return [] if the input is not actionable.
 
-IMPORTANT: When user asks to open multiple windows (e.g., "open 5 windows"), create multiple separate tool calls, one for each window.
+Examples (format is binding, values illustrative):
+User: Analyze this PDF summary
+Output: [{"tool":"analyze_pdf","parameters":{"prompt":"Summarize the document"}}]
 
-Always respond using the available tools. If the request is unclear, make reasonable assumptions.`;
+User: Open web page https://x.com and view tasks
+Output: [{"tool":"open_webview","parameters":{"url":"https://x.com"}},{"tool":"view_tasks","parameters":{}}]`;
 
     // Convert our tool format to Cerebras expected format
     const cerebrasTools: CerebrasTool[] = tools.map(tool => ({
@@ -136,9 +126,10 @@ Always respond using the available tools. If the request is unclear, make reason
   async extractTasksFromTranscript(transcript: string): Promise<{ tasks: string[]; remainder: string }> {
     const systemPrompt = [
       'You extract actionable commands from transcripts.',
-      'Respond with ONLY a single JSON object: {"tasks": string[], "remainder": string}.',
-      'Do not include any prose, code fences, or extra text before/after the JSON.',
-      'Be aggressive about filtering out irrelevant, random, or filler text; prefer remainder="" unless clearly a partial command.'
+      'ABSOLUTE OUTPUT CONTRACT (NO EXCEPTIONS): Return ONE strict JSON object with EXACTLY these keys and types:',
+      '{ "tasks": string[], "remainder": string }',
+      'Do NOT include explanations, prose, markdown, code fences, logging, comments, or additional keys.',
+      'If no tasks, use tasks=[]. If no remainder, use remainder="". Use double quotes only; no trailing commas.'
     ].join(' ');
 
     const request: CerebrasRequest = {

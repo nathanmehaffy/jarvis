@@ -28,17 +28,32 @@ export class AITester {
   }
 
   /**
-   * Test a single text command
+   * Test a single text command with optional context simulation
    */
-  async testCommand(text: string): Promise<void> {
+  async testCommand(text: string, options?: { uiContext?: any; actionHistory?: Array<{ tool: string; parameters: any; sourceText: string }> }): Promise<void> {
     this.requestQueue = this.requestQueue.then(async () => {
       console.log(`\n🧪 Testing command: "${text}"`);
       console.log('─'.repeat(50));
 
+      // Use provided context or simulate realistic defaults
+      const uiContext = options?.uiContext || {
+        windows: [
+          { id: 'win_notes', title: 'My Notes', type: 'sticky-note' },
+          { id: 'win_tasks', title: 'Task List', type: 'tasks' },
+          { id: 'win_search', title: 'Search Results', type: 'search' }
+        ]
+      };
+      const actionHistory = options?.actionHistory || [];
+
+      console.log('📝 Parsing command with simulated context...');
+      console.log('UI Context:', uiContext);
+      if (actionHistory.length > 0) {
+        console.log('Action History:', actionHistory);
+      }
+
       try {
         // Parse the command (may use Cerebras; fallback handles offline/rate limits)
-        console.log('📝 Parsing command...');
-        const parseResult = await this.taskParser.parseTextToTasks({ transcript: text, actionHistory: [], uiContext: {} });
+        const parseResult = await this.taskParser.parseTextToTasks({ transcript: text, actionHistory, uiContext });
 
         // New parser always returns { new_tool_calls }
 

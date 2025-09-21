@@ -274,55 +274,6 @@ export class GeminiClient {
 export const geminiClient = new GeminiClient();
 </file>
 
-<file path="src/app/api/analyze-pdf/route.ts">
-// src/app/api/analyze-pdf/route.ts
-import { NextRequest } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
-export async function POST(request: NextRequest) {
-  try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File | null;
-    const prompt = formData.get('prompt') as string || 'Summarize this PDF and extract key bullet points.';
-
-    if (!file) {
-      return new Response(JSON.stringify({ error: 'No PDF file provided' }), { status: 400 });
-    }
-
-    const buffer = Buffer.from(await file.arrayBuffer());
-
-    // Dynamic import to avoid build issues with pdf-parse
-    const pdfParse = (await import('pdf-parse')).default;
-    const data = await pdfParse(buffer);
-    const text = data.text || '';
-
-    if (!text.trim()) {
-      return new Response(JSON.stringify({ error: 'Could not extract text from PDF' }), { status: 422 });
-    }
-
-    if (!process.env.GEMINI_API_KEY) {
-      // Fallback to simple truncation if Gemini is not available
-      const summary = text.split('.').slice(0, 5).join('.') + '.';
-      return new Response(JSON.stringify({ summary }), { status: 200 });
-    }
-
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const result = await model.generateContent(`${prompt}\n\n---\n\n${text.slice(0, 100000)}`);
-    const summary = await result.response.text();
-
-    return new Response(JSON.stringify({ summary }), { status: 200 });
-
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return new Response(JSON.stringify({ error: msg }), { status: 500 });
-  }
-}
-</file>
-
 <file path="src/app/api/fetch-article/route.ts">
 // src/app/api/fetch-article/route.ts
 import { NextRequest } from 'next/server';
@@ -369,88 +320,6 @@ export async function POST(request: NextRequest) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return new Response(JSON.stringify({ error: `Failed to parse article: ${msg}` }), { status: 500 });
-  }
-}
-</file>
-
-<file path="src/app/api/gemini-search/route.ts">
-import { NextRequest } from 'next/server';
-
-export async function POST(request: NextRequest) {
-  try {
-    console.log('[API] /api/gemini-search POST hit');
-    const body = await request.json().catch(() => ({}));
-    const { query } = body;
-
-    if (!process.env.GEMINI_API_KEY) {
-      console.error('[API] Missing GEMINI_API_KEY environment variable');
-      return new Response(JSON.stringify({ error: 'Missing GEMINI_API_KEY' }), { status: 500 });
-    }
-
-    if (!query || typeof query !== 'string') {
-      console.error('[API] Missing or invalid query parameter', { query });
-      return new Response(JSON.stringify({ error: 'Missing or invalid query parameter' }), { status: 400 });
-    }
-
-    console.log('[API] Making Gemini API request', { query });
-
-    const prompt = `Please provide a comprehensive and factual summary about: ${query}
-
-Guidelines:
-- Provide accurate, up-to-date information
-- Structure your response with clear headings and bullet points when appropriate
-- Include relevant facts, context, and key details
-- Keep the response concise but informative
-- If the topic involves current events or rapidly changing information, note that`;
-
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${process.env.GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: prompt
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 2048,
-        },
-        systemInstruction: {
-          parts: [{
-            text: 'You are a helpful AI assistant providing factual, well-researched responses. When providing information, cite sources when possible and maintain objectivity.'
-          }]
-        }
-      })
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      console.error('[API] Gemini API error', { status: response.status, statusText: response.statusText, detail: text });
-      return new Response(JSON.stringify({ error: `Gemini API error: ${response.status} ${response.statusText}`, detail: text }), { status: 502 });
-    }
-
-    const data = await response.json();
-    console.log('[API] Gemini API response received', { hasData: !!data });
-
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-      console.error('[API] Invalid response format from Gemini API', { data });
-      return new Response(JSON.stringify({ error: 'Invalid response format from Gemini API' }), { status: 502 });
-    }
-
-    const text = data.candidates[0].content.parts?.[0]?.text;
-    if (!text) {
-      console.error('[API] Empty response from Gemini API', { data });
-      return new Response(JSON.stringify({ error: 'Empty response from Gemini API' }), { status: 502 });
-    }
-
-    console.log('[API] /api/gemini-search success', { responseLength: text.length });
-    return Response.json({ result: text });
-  } catch (error) {
-    console.error('[API] /api/gemini-search error', error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), { status: 500 });
   }
 }
 </file>
@@ -2115,6 +1984,144 @@ export default config;
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]
+}
+</file>
+
+<file path="src/app/api/analyze-pdf/route.ts">
+// src/app/api/analyze-pdf/route.ts
+import { NextRequest } from 'next/server';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+export async function POST(request: NextRequest) {
+  try {
+    const formData = await request.formData();
+    const file = formData.get('file') as File | null;
+    const userPrompt = formData.get('prompt') as string;
+    const defaultPrompt = `Analyze the following document and provide a structured summary using Markdown. Your response should include:
+1.  **Overall Summary:** A concise paragraph summarizing the document's main purpose and conclusions.
+2.  **Key Takeaways:** A bulleted list of the 5-7 most important points, findings, or arguments.
+3.  **Potential Action Items:** A bulleted list of any tasks, decisions, or follow-ups suggested by the document. If none, state "No specific action items were identified."`;
+
+    const prompt = userPrompt || defaultPrompt;
+
+    if (!file) {
+      return new Response(JSON.stringify({ error: 'No PDF file provided' }), { status: 400 });
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    // Dynamic import to avoid build issues with pdf-parse
+    const pdfParse = (await import('pdf-parse')).default;
+    const data = await pdfParse(buffer);
+    const text = data.text || '';
+
+    if (!text.trim()) {
+      return new Response(JSON.stringify({ error: 'Could not extract text from PDF' }), { status: 422 });
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      // Fallback to simple truncation if Gemini is not available
+      const summary = text.split('.').slice(0, 5).join('.') + '.';
+      return new Response(JSON.stringify({ summary }), { status: 200 });
+    }
+
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const result = await model.generateContent(`${prompt}\n\n---\n\n${text.slice(0, 100000)}`);
+    const summary = await result.response.text();
+
+    return new Response(JSON.stringify({ summary }), { status: 200 });
+
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return new Response(JSON.stringify({ error: msg }), { status: 500 });
+  }
+}
+</file>
+
+<file path="src/app/api/gemini-search/route.ts">
+import { NextRequest } from 'next/server';
+
+export async function POST(request: NextRequest) {
+  try {
+    console.log('[API] /api/gemini-search POST hit');
+    const body = await request.json().catch(() => ({}));
+    const { query } = body;
+
+    if (!process.env.GEMINI_API_KEY) {
+      console.error('[API] Missing GEMINI_API_KEY environment variable');
+      return new Response(JSON.stringify({ error: 'Missing GEMINI_API_KEY' }), { status: 500 });
+    }
+
+    if (!query || typeof query !== 'string') {
+      console.error('[API] Missing or invalid query parameter', { query });
+      return new Response(JSON.stringify({ error: 'Missing or invalid query parameter' }), { status: 400 });
+    }
+
+    console.log('[API] Making Gemini API request', { query });
+
+    const prompt = `You are a world-class research assistant. Your goal is to provide a clear, well-structured, and informative answer to the user's query: "${query}"
+
+Guidelines:
+1.  **Answer Directly:** Start with a concise, direct summary that answers the core question.
+2.  **Structure with Markdown:** Use Markdown for all formatting. Use headings (#, ##), bold text, and bullet points to create a readable and organized response.
+3.  **Key Information:** After the summary, create sections for key details, important facts, different perspectives, or relevant sub-topics.
+4.  **Actionable & Informative:** The response should be dense with information, not conversational fluff.
+5.  **Cite When Possible:** If you are drawing information from a specific, verifiable public source (like a major news article, research paper, or official website), you can add a link at the end of the relevant sentence.
+6.  **Current Events:** If the topic is rapidly developing, add a brief note at the end that information may change.`;
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: prompt
+          }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 2048,
+        },
+        systemInstruction: {
+          parts: [{
+            text: 'You are a helpful AI assistant providing factual, well-researched responses. When providing information, cite sources when possible and maintain objectivity.'
+          }]
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('[API] Gemini API error', { status: response.status, statusText: response.statusText, detail: text });
+      return new Response(JSON.stringify({ error: `Gemini API error: ${response.status} ${response.statusText}`, detail: text }), { status: 502 });
+    }
+
+    const data = await response.json();
+    console.log('[API] Gemini API response received', { hasData: !!data });
+
+    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+      console.error('[API] Invalid response format from Gemini API', { data });
+      return new Response(JSON.stringify({ error: 'Invalid response format from Gemini API' }), { status: 502 });
+    }
+
+    const text = data.candidates[0].content.parts?.[0]?.text;
+    if (!text) {
+      console.error('[API] Empty response from Gemini API', { data });
+      return new Response(JSON.stringify({ error: 'Empty response from Gemini API' }), { status: 502 });
+    }
+
+    console.log('[API] /api/gemini-search success', { responseLength: text.length });
+    return Response.json({ result: text });
+  } catch (error) {
+    console.error('[API] /api/gemini-search error', error);
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), { status: 500 });
+  }
 }
 </file>
 
@@ -6398,6 +6405,172 @@ Always respond using the available tools. If the request is unclear, make reason
 }
 </file>
 
+<file path="src/ai/AIManager.ts">
+import { eventBus } from '@/lib/eventBus';
+
+type SerializableWindow = {
+  id: string;
+  title?: string;
+  isOpen?: boolean;
+  isMinimized?: boolean;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  zIndex?: number;
+};
+
+type SerializableUIContext = { windows?: SerializableWindow[] };
+
+export class AIManager {
+  private worker: Worker | null = null;
+  private isInitialized = false;
+  private uiContext: SerializableUIContext = {};
+
+  // Only send data that can be structured-cloned to the worker
+  private getSerializableUIContext(): SerializableUIContext & { activeWindowId?: string } {
+    try {
+      const context = this.uiContext || {};
+      const serializable: SerializableUIContext & { activeWindowId?: string } = {};
+
+      if (Array.isArray(context.windows)) {
+        const cleaned: SerializableWindow[] = context.windows
+          .filter((w: Partial<SerializableWindow>): w is SerializableWindow => typeof w?.id === 'string')
+          .map((w) => ({
+            id: w.id,
+            title: w.title,
+            // omit component/functions; include only plain data
+            isOpen: Boolean(w.isOpen),
+            isMinimized: Boolean(w.isMinimized),
+            x: typeof w.x === 'number' ? w.x : undefined,
+            y: typeof w.y === 'number' ? w.y : undefined,
+            width: typeof w.width === 'number' ? w.width : undefined,
+            height: typeof w.height === 'number' ? w.height : undefined,
+            zIndex: typeof w.zIndex === 'number' ? w.zIndex : undefined
+          }));
+        serializable.windows = cleaned;
+      }
+
+      // Derive active window heuristically by highest zIndex
+      if (serializable.windows && serializable.windows.length > 0) {
+        const active = [...serializable.windows].sort((a, b) => (b.zIndex ?? 0) - (a.zIndex ?? 0))[0];
+        serializable.activeWindowId = active?.id;
+      }
+
+      return serializable;
+    } catch {
+      return {} as SerializableUIContext;
+    }
+  }
+
+  async initialize(): Promise<void> {
+    if (this.isInitialized) return;
+
+    try {
+      this.worker = new Worker(new URL('./aiWorker.ts', import.meta.url));
+      
+      this.worker.onmessage = (event) => {
+        const { type, data } = event.data;
+        // Normalize error channel
+        if (type === 'AI_ERROR') {
+          eventBus.emit('ai:error', data);
+          return;
+        }
+        // Bridge UI_* messages to UI event bus
+        if (type === 'UI_OPEN_WINDOW') {
+          eventBus.emit('ui:open_window', data);
+          return;
+        }
+        if (type === 'UI_CLOSE_WINDOW') {
+          eventBus.emit('ui:close_window', data);
+          return;
+        }
+        if (type === 'UI_UPDATE_WINDOW') {
+          eventBus.emit('ui:update_window', data);
+          return;
+        }
+        if (type === 'UI_ORGANIZE_WINDOWS') {
+          eventBus.emit('ui:organize_windows', data);
+          return;
+        }
+        eventBus.emit(`ai:${type.toLowerCase()}`, data);
+      };
+
+      this.worker.onerror = (error) => {
+        console.error('AI worker error:', error);
+        eventBus.emit('ai:error', error);
+      };
+
+      this.isInitialized = true;
+      eventBus.emit('ai:initialized');
+
+      // Bridge: when input emits transcript updates, forward to worker for stateful processing
+      eventBus.on('input:transcript_updated', (data: { transcript: string }) => {
+        try {
+          const transcript = (data?.transcript || '').trim();
+          if (!transcript) return;
+          eventBus.emit('ai:processing', { count: 1 });
+          this.worker?.postMessage({
+            type: 'PROCESS_TEXT_COMMAND',
+            data: { transcript, uiContext: this.getSerializableUIContext() }
+          });
+        } catch (e) {
+          eventBus.emit('ai:error', e);
+        }
+      });
+    } catch (error) {
+      console.error('Failed to initialize AI worker:', error);
+      eventBus.emit('ai:error', error);
+    }
+  }
+
+  setUIContext(context: SerializableUIContext): void {
+    this.uiContext = context;
+    try {
+      // Forward context to worker so it can be included in ConversationState
+      this.worker?.postMessage({ type: 'SET_UI_CONTEXT', data: this.getSerializableUIContext() });
+    } catch {}
+  }
+
+
+  processTextCommand(text: string): void {
+    if (!this.worker) {
+      console.warn('AI worker not initialized');
+      return;
+    }
+
+    this.worker.postMessage({
+      type: 'PROCESS_TEXT_COMMAND',
+      data: { text, uiContext: this.getSerializableUIContext() }
+    });
+  }
+
+  generateResponse(prompt: unknown): void {
+    if (!this.worker) {
+      console.warn('AI worker not initialized');
+      return;
+    }
+
+    this.worker.postMessage({
+      type: 'GENERATE_RESPONSE',
+      data: prompt as object
+    });
+  }
+
+
+  destroy(): void {
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+    }
+    this.isInitialized = false;
+    eventBus.emit('ai:destroyed');
+  }
+}
+
+export const aiManager = new AIManager();
+</file>
+
 <file path="src/ai/taskParser.ts">
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { CerebrasClient } from './cerebrasClient';
@@ -6425,37 +6598,75 @@ export class TaskParser {
       timestamp: new Date().toISOString()
     });
 
-    const systemPrompt = [
-      'You are Jarvis, an AI assistant. Your primary function is to analyze an ongoing speech transcript and identify any NEW user commands that have not yet been executed.',
-      '',
-      'You will receive a JSON input with the user\'s full transcript, your recent action history, and the current UI state.',
-      '',
-      'Your task is to:',
-      '1. Carefully read the entire `fullTranscript`.',
-      '2. Compare the user\'s commands in the transcript against the `actionHistory`.',
-      '3. Identify any explicit commands in the transcript that do NOT have a corresponding entry in the `actionHistory`.',
-      '4. If you find new, complete commands, respond with a JSON object containing a `new_tool_calls` array.',
-      '5. Each tool call in the array MUST include a `sourceText` property, containing the exact phrase from the transcript that justifies the action.',
-      '6. If there are no new commands, or if a command is incomplete (e.g., "open a graph showing..."), respond with an empty `new_tool_calls` array.',
-      '7. DO NOT re-issue tool calls for commands that are already present in the `actionHistory`.',
-      '',
-      'Command patterns to detect in addition to standard open/close/organize:',
-      '- Edit window: examples',
-      '  * "Edit window \"Green Tomatoes\" to say I love green tomatoes" → edit_window { titleMatch: "Green Tomatoes", newContent: "I love green tomatoes" }',
-      '  * "Edit window \"Budget\" title to Monthly Budget" → edit_window { titleMatch: "Budget", newTitle: "Monthly Budget" }',
-      '  * "Edit window id abc123 set title Project Plan" → edit_window { windowId: "abc123", newTitle: "Project Plan" }',
-      '- Web browsing and content tools:',
-      '  * "summarize the article at example.com/news" → summarize_article { url: "http://example.com/news" }',
-      '  * "open the second link from my last search" → open_search_result { index: 2 }',
-      '  * "show me the page google.com" → open_webview { url: "https://google.com" }',
-      '- Task and reminder management:',
-      '  * "add a task to buy milk" → create_task { title: "buy milk" }',
-      '  * "remind me to check the oven in 15 minutes" → set_reminder { message: "check the oven", time: "in 15 minutes" }',
-      '  * "summarize this PDF about machine learning" → analyze_pdf { prompt: "Summarize this PDF about machine learning" }',
-      '  * "show my tasks" → view_tasks {}',
-      '',
-      'When editing windows, prefer matching by exact title (case-insensitive) when an id is not provided. Only include fields that are actually specified by the user.'
-    ].join('\n');
+    const systemPrompt = `
+# Persona
+You are Jarvis, a precise and efficient AI command parser. Your sole responsibility is to translate a user's ongoing speech transcript into specific, executable tool calls based on the provided context. You are not conversational; your output is always a JSON object.
+
+# Core Task
+Your goal is to identify **new, actionable commands** from the user's transcript that have not yet been executed by checking the \`actionHistory\`.
+
+# CRITICAL RULE: Handle Context Switching
+Your most common failure is "topic stickiness." After a user performs a search, you might mistakenly interpret subsequent, unrelated commands as more search queries. You MUST overcome this bias. **The user's intent can change completely from one phrase to the next.** A search command can be immediately followed by a window command, a reminder, or any other tool. Evaluate each new part of the transcript independently.
+
+# Context Understanding
+You will receive a JSON object containing the following state:
+- \`fullTranscript\`: The user's complete, ongoing speech.
+- \`actionHistory\`: A list of tool calls you have already generated and that have been executed. **This is your memory. Do not repeat actions from this list.**
+- \`uiContext\`: The current state of the UI, including a list of open windows with their \`id\`, \`title\`, and other properties.
+- \`availableTools\`: The list of tools you can call.
+
+# Rules of Engagement
+1.  **Stateful & Idempotent:** Your primary directive is to compare the \`fullTranscript\` with the \`actionHistory\`. Only generate tool calls for commands that appear in the transcript but are **NOT** yet in the history.
+2.  **Be Precise:** Only act on clear, complete commands. If a command is ambiguous or unfinished, wait for the user to complete their thought. Your default action is to do nothing by returning an empty array.
+3.  **Ignore Filler:** Disregard conversational filler, stutters, and non-command speech (e.g., "uhm," "let's see," "I think I want to...").
+4.  **Use Context:** When a command refers to a window (e.g., "edit that note," "close the search results"), use the \`uiContext.windows\` list to find the correct window \`id\` or provide a \`titleMatch\`. Prefer using the most recently active window if the command is ambiguous.
+5.  **Multi-Command Handling:** If the user gives multiple commands in one phrase (e.g., "open a note and then search for dogs"), generate an array of tool calls in the correct sequence. For repeated actions (e.g., "open 5 windows"), generate 5 separate tool calls.
+6.  **Source Attribution:** Every tool call you generate **MUST** include a \`sourceText\` property containing the exact phrase from the transcript that justifies that specific action.
+
+# Output Format
+Your response **MUST** be a single, valid JSON object with one key: \`new_tool_calls\`. This key must hold an array of tool call objects. If no new actions are warranted, return an empty array: \`{ "new_tool_calls": [] }\`.
+
+# Examples (Few-Shot Learning)
+
+**Example 1: Simple Command**
+- Input: \`{ "fullTranscript": "please open a sticky note saying buy milk" }\`
+- Output: \`{ "new_tool_calls": [{ "tool": "open_window", "parameters": { "windowType": "sticky-note", "context": { "content": "buy milk" } }, "sourceText": "open a sticky note saying buy milk" }] }\`
+
+**Example 2: Command Already Executed**
+- Input: \`{ "fullTranscript": "open a note about project ideas", "actionHistory": [{ "tool": "open_window", "parameters": { "context": { "content": "project ideas" } } }] }\`
+- Output: \`{ "new_tool_calls": [] }\`
+
+**Example 3: Contextual Command**
+- Input: \`{ "fullTranscript": "search for AI agents then close the project ideas window", "uiContext": { "windows": [{ "id": "win_123", "title": "Project Ideas" }] } }\`
+- Output: \`{ "new_tool_calls": [{ "tool": "search", "parameters": { "query": "AI agents" }, "sourceText": "search for AI agents" }, { "tool": "close_window", "parameters": { "windowId": "win_123" }, "sourceText": "close the project ideas window" }] }\`
+
+**Example 4: Incomplete Command**
+- Input: \`{ "fullTranscript": "okay so what I want to do is summarize the article at" }\`
+- Output: \`{ "new_tool_calls": [] }\`
+
+**Example 5: Editing a Window**
+- Input: \`{ "fullTranscript": "change the note about milk to say buy milk and eggs", "uiContext": { "windows": [{ "id": "win_456", "title": "buy milk" }] } }\`
+- Output: \`{ "new_tool_calls": [{ "tool": "edit_window", "parameters": { "windowId": "win_456", "newContent": "buy milk and eggs" }, "sourceText": "change the note about milk to say buy milk and eggs" }] }\`
+
+**Example 6: Multi-Action Command**
+- Input: \`{ "fullTranscript": "remind me to leave in 10 minutes and show my tasks" }\`
+- Output: \`{ "new_tool_calls": [{ "tool": "set_reminder", "parameters": { "message": "leave", "time": "in 10 minutes" }, "sourceText": "remind me to leave in 10 minutes" }, { "tool": "view_tasks", "parameters": {}, "sourceText": "show my tasks" }] }\`
+
+**Example 7: CORRECTLY Switching Context After a Search**
+- Input: \`{
+    "fullTranscript": "search for the latest AI research okay now create a note to read it later",
+    "actionHistory": [{ "tool": "search", "parameters": { "query": "latest AI research" }, "sourceText": "search for the latest AI research" }]
+  }\`
+- Rationale: The "search" command is already in the history. The new, un-executed command is "create a note...". The correct action is to call \`open_window\`, NOT to search for "create a note...".
+- Correct Output: \`{
+    "new_tool_calls": [{
+      "tool": "open_window",
+      "parameters": { "windowType": "sticky-note", "context": { "content": "read it later" } },
+      "sourceText": "create a note to read it later"
+    }]
+  }\`
+- Incorrect Output: \`{ "new_tool_calls": [{ "tool": "search", "parameters": { "query": "create a note to read it later" }, "sourceText": "create a note to read it later" }] }\`
+`;
 
     const jsonPayload = {
       fullTranscript: fullTranscript,
@@ -6653,172 +6864,6 @@ export class TaskParser {
     return str.charAt(0).toUpperCase() + str.slice(1);
   }
 }
-</file>
-
-<file path="src/ai/AIManager.ts">
-import { eventBus } from '@/lib/eventBus';
-
-type SerializableWindow = {
-  id: string;
-  title?: string;
-  isOpen?: boolean;
-  isMinimized?: boolean;
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-  zIndex?: number;
-};
-
-type SerializableUIContext = { windows?: SerializableWindow[] };
-
-export class AIManager {
-  private worker: Worker | null = null;
-  private isInitialized = false;
-  private uiContext: SerializableUIContext = {};
-
-  // Only send data that can be structured-cloned to the worker
-  private getSerializableUIContext(): SerializableUIContext & { activeWindowId?: string } {
-    try {
-      const context = this.uiContext || {};
-      const serializable: SerializableUIContext & { activeWindowId?: string } = {};
-
-      if (Array.isArray(context.windows)) {
-        const cleaned: SerializableWindow[] = context.windows
-          .filter((w: Partial<SerializableWindow>): w is SerializableWindow => typeof w?.id === 'string')
-          .map((w) => ({
-            id: w.id,
-            title: w.title,
-            // omit component/functions; include only plain data
-            isOpen: Boolean(w.isOpen),
-            isMinimized: Boolean(w.isMinimized),
-            x: typeof w.x === 'number' ? w.x : undefined,
-            y: typeof w.y === 'number' ? w.y : undefined,
-            width: typeof w.width === 'number' ? w.width : undefined,
-            height: typeof w.height === 'number' ? w.height : undefined,
-            zIndex: typeof w.zIndex === 'number' ? w.zIndex : undefined
-          }));
-        serializable.windows = cleaned;
-      }
-
-      // Derive active window heuristically by highest zIndex
-      if (serializable.windows && serializable.windows.length > 0) {
-        const active = [...serializable.windows].sort((a, b) => (b.zIndex ?? 0) - (a.zIndex ?? 0))[0];
-        serializable.activeWindowId = active?.id;
-      }
-
-      return serializable;
-    } catch {
-      return {} as SerializableUIContext;
-    }
-  }
-
-  async initialize(): Promise<void> {
-    if (this.isInitialized) return;
-
-    try {
-      this.worker = new Worker(new URL('./aiWorker.ts', import.meta.url));
-      
-      this.worker.onmessage = (event) => {
-        const { type, data } = event.data;
-        // Normalize error channel
-        if (type === 'AI_ERROR') {
-          eventBus.emit('ai:error', data);
-          return;
-        }
-        // Bridge UI_* messages to UI event bus
-        if (type === 'UI_OPEN_WINDOW') {
-          eventBus.emit('ui:open_window', data);
-          return;
-        }
-        if (type === 'UI_CLOSE_WINDOW') {
-          eventBus.emit('ui:close_window', data);
-          return;
-        }
-        if (type === 'UI_UPDATE_WINDOW') {
-          eventBus.emit('ui:update_window', data);
-          return;
-        }
-        if (type === 'UI_ORGANIZE_WINDOWS') {
-          eventBus.emit('ui:organize_windows', data);
-          return;
-        }
-        eventBus.emit(`ai:${type.toLowerCase()}`, data);
-      };
-
-      this.worker.onerror = (error) => {
-        console.error('AI worker error:', error);
-        eventBus.emit('ai:error', error);
-      };
-
-      this.isInitialized = true;
-      eventBus.emit('ai:initialized');
-
-      // Bridge: when input emits transcript updates, forward to worker for stateful processing
-      eventBus.on('input:transcript_updated', (data: { transcript: string }) => {
-        try {
-          const transcript = (data?.transcript || '').trim();
-          if (!transcript) return;
-          eventBus.emit('ai:processing', { count: 1 });
-          this.worker?.postMessage({
-            type: 'PROCESS_TEXT_COMMAND',
-            data: { transcript, uiContext: this.getSerializableUIContext() }
-          });
-        } catch (e) {
-          eventBus.emit('ai:error', e);
-        }
-      });
-    } catch (error) {
-      console.error('Failed to initialize AI worker:', error);
-      eventBus.emit('ai:error', error);
-    }
-  }
-
-  setUIContext(context: SerializableUIContext): void {
-    this.uiContext = context;
-    try {
-      // Forward context to worker so it can be included in ConversationState
-      this.worker?.postMessage({ type: 'SET_UI_CONTEXT', data: this.getSerializableUIContext() });
-    } catch {}
-  }
-
-
-  processTextCommand(text: string): void {
-    if (!this.worker) {
-      console.warn('AI worker not initialized');
-      return;
-    }
-
-    this.worker.postMessage({
-      type: 'PROCESS_TEXT_COMMAND',
-      data: { text, uiContext: this.getSerializableUIContext() }
-    });
-  }
-
-  generateResponse(prompt: unknown): void {
-    if (!this.worker) {
-      console.warn('AI worker not initialized');
-      return;
-    }
-
-    this.worker.postMessage({
-      type: 'GENERATE_RESPONSE',
-      data: prompt as object
-    });
-  }
-
-
-  destroy(): void {
-    if (this.worker) {
-      this.worker.terminate();
-      this.worker = null;
-    }
-    this.isInitialized = false;
-    eventBus.emit('ai:destroyed');
-  }
-}
-
-export const aiManager = new AIManager();
 </file>
 
 <file path="src/ai/toolExecutor.ts">
