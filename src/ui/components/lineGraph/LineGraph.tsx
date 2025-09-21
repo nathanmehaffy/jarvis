@@ -4,6 +4,10 @@ import { useMemo, useState } from 'react';
 import { DataPoint, LineGraphProps, GraphBounds } from './lineGraph.types';
 
 export function LineGraph({
+  data,
+  width = 800,
+  height = 400,
+  title,
   xAxisLabel = 'X Axis',
   yAxisLabel = 'Y Axis',
   lineColor = '#8b5cf6',

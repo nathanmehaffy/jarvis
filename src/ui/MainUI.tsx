@@ -341,8 +341,9 @@ export function MainUI() {
           const padding = 20;
           const minGap = 40;
           
-          // Find the largest available rectangular area for optimal packing
-          let bestFitArea = minArea; // Start with minimum
+           // Find the largest available rectangular area for optimal packing
+           let bestFitArea = minArea; // Start with minimum
+           let bestWidth = 0, bestHeight = 0;
           
           // Test different sizes within the min/max area constraints, starting from max and working down
           for (let testArea = maxArea; testArea >= minArea; testArea -= (maxArea - minArea) / 20) {
@@ -364,7 +365,7 @@ export function MainUI() {
             let bestScore = Infinity; // Lower score = better position (closer to existing windows)
             
             for (let y = padding; y + testHeight + padding <= screenHeight; y += 15) {
-              for (let x = padding; x + testWidth + padding <= availableWidth + padding * 2; x += 15) {
+              for (let x = padding; x + testWidth + padding <= screenWidth + padding * 2; x += 15) {
                 // Check if this position overlaps with existing windows
                 const wouldOverlap = existingWindows.some(win => {
                   const winLeft = win.x || 0;

@@ -13,25 +13,38 @@ interface ChatNotification {
 
 export function BottomChatNotifications() {
   const [currentNotification, setCurrentNotification] = useState<ChatNotification | null>(null);
-  const [currentTimeout, setCurrentTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [currentTimeout, setCurrentTimeout] = useState<number | null>(null);
 
   useEffect(() => {
-    if (currentMessage) {
-      if (currentTimeout.current) {
-        clearTimeout(currentTimeout.current);
+    const handleNotification = (notification: ChatNotification) => {
+      setCurrentNotification(notification);
+    };
+
+    eventBus.on('chat-notification', handleNotification);
+
+    return () => {
+      eventBus.off('chat-notification', handleNotification);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (currentNotification) {
+      if (currentTimeout) {
+        clearTimeout(currentTimeout);
       }
-      currentTimeout.current = window.setTimeout(() => {
-        setMessages(prev => prev.slice(1));
-        currentTimeout.current = null;
-      }, currentMessage.duration || 15000);
+      const timeout = window.setTimeout(() => {
+        setCurrentNotification(null);
+        setCurrentTimeout(null);
+      }, currentNotification.duration || 3000);
+      setCurrentTimeout(timeout);
     }
 
     return () => {
-      if (currentTimeout.current) {
-        clearTimeout(currentTimeout.current);
+      if (currentTimeout) {
+        clearTimeout(currentTimeout);
       }
     };
-  }, [currentMessage, currentTimeout]);
+  }, [currentNotification]);
 
   if (!currentNotification) return null;
 

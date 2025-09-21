@@ -5,8 +5,8 @@ import { eventBus } from '@/lib/eventBus';
 import { SystemOutputState, SystemOutputProps } from './systemOutput.types';
 import { MarkdownText } from '../markdownText';
 
-export function SystemOutput() {
-  const [notes, setNotes] = useState<string[]>([]);
+export function SystemOutput({ placeholder = 'System output will appear here...', content }: { placeholder?: string; content?: string }) {
+  const [notes, setNotes] = useState<SystemOutputState>({content: '', lastModified: new Date()});
 
   useEffect(() => {
     const unsubscribers = [

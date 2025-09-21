@@ -108,8 +108,8 @@ export function SearchResultsWindow({ content }: { content: string }) {
               </a>
             ),
             img: ({ src, alt, width, height }) => (
-              <Image
-                src={src || ''}
+              <img
+                src={typeof src === 'string' ? src : ''}
                 alt={alt || ''}
                 width={Number(width) || 500}
                 height={Number(height) || 300}

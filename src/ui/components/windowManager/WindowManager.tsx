@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, forwardRef, useImperativeHandle, useRef } from 'react';
+import { useEffect, useState, forwardRef, useImperativeHandle, useRef, useCallback } from 'react';
 import { Window } from '../window';
 import { WindowData, WindowManagerState } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
