@@ -64,7 +64,15 @@ Requirements:
           parts: [{
             text: 'You are a helpful AI assistant providing factual, well-researched responses. When providing information, cite sources when possible and maintain objectivity.'
           }]
-        }
+        },
+        tools: [{
+          googleSearchRetrieval: {
+            dynamicRetrievalConfig: {
+              mode: "MODE_DYNAMIC",
+              dynamicThreshold: 0.7
+            }
+          }
+        }]
       })
     });
 

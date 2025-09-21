@@ -1,4 +1,5 @@
 import { eventBus } from '@/lib/eventBus';
+import { imageDescriptionService } from './imageDescriptionService';
 
 type SerializableWindow = {
   id: string;
@@ -10,6 +11,10 @@ type SerializableWindow = {
   width?: number;
   height?: number;
   zIndex?: number;
+  content?: string;
+  windowType?: string;
+  imageUrl?: string;
+  keywords?: string[];
 };
 
 type SerializableUIContext = { windows?: SerializableWindow[] };
@@ -38,7 +43,11 @@ export class AIManager {
             y: typeof w.y === 'number' ? w.y : undefined,
             width: typeof w.width === 'number' ? w.width : undefined,
             height: typeof w.height === 'number' ? w.height : undefined,
-            zIndex: typeof w.zIndex === 'number' ? w.zIndex : undefined
+            zIndex: typeof w.zIndex === 'number' ? w.zIndex : undefined,
+            content: this.extractWindowContent(w),
+            windowType: this.inferWindowType(w),
+            imageUrl: typeof w.imageUrl === 'string' ? w.imageUrl : undefined,
+            keywords: Array.isArray(w.keywords) ? w.keywords : undefined
           }));
         serializable.windows = cleaned;
       }
@@ -52,6 +61,136 @@ export class AIManager {
       return serializable;
     } catch {
       return {} as SerializableUIContext;
+    }
+  }
+
+  private extractWindowContent(window: Record<string, unknown>): string | undefined {
+    try {
+      // Extract content based on window type and available data
+      if (typeof window.content === 'string' && window.content.trim()) {
+        const windowType = this.inferWindowType(window);
+
+        // For search results, extract key information and headlines
+        if (windowType === 'search-results' && window.content.length > 200) {
+          const lines = window.content.split('\n').filter(line => line.trim());
+          const summary = lines.slice(0, 10).join('\n');
+          return summary + (lines.length > 10 ? '\n... (content truncated)' : '');
+        }
+
+        // For webview, extract the URL being viewed
+        if (windowType === 'webview') {
+          const urlMatch = window.content.match(/URL:\s*(.+)/);
+          const url = urlMatch ? urlMatch[1] : '';
+          return `[Web Page] ${url ? `Viewing: ${url}` : 'Loading web content'}`;
+        }
+
+        // For regular content, truncate if too long
+        return window.content.length > 500 ?
+          window.content.substring(0, 500) + '... (content truncated)' :
+          window.content;
+      }
+
+      // For image windows, try to get enhanced description
+      if (typeof window.imageUrl === 'string' && window.imageUrl) {
+        const cachedDescription = imageDescriptionService.getCachedDescription(window.imageUrl);
+        if (cachedDescription) {
+          return cachedDescription;
+        }
+        // Trigger background description generation
+        const title = typeof window.title === 'string' ? window.title : 'Untitled';
+        imageDescriptionService.preloadDescription(window.imageUrl, title);
+        return `[Image: ${title}]`;
+      }
+
+      // Extract context for special window types based on localStorage or other sources
+      const windowType = this.inferWindowType(window);
+      return windowType ? this.extractSpecialWindowContext(window, windowType) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private extractSpecialWindowContext(window: Record<string, unknown>, windowType: string): string | undefined {
+    try {
+      switch (windowType) {
+        case 'tasks':
+          return this.extractTasksContext();
+
+        case 'webview':
+          // Try to extract URL from window properties
+          if (typeof window.url === 'string' && window.url) {
+            return `[Web Page] Viewing: ${window.url}`;
+          }
+          return '[Web Page] Loading...';
+
+        case 'adaptive-quiz':
+          return '[Interactive Quiz] Active learning session';
+
+        case 'integral-graph':
+          return '[Math Visualization] Integral graph display';
+
+        case 'pdf-viewer':
+          const docTitle = typeof window.title === 'string' ? window.title : 'Untitled document';
+          return `[PDF Document] ${docTitle}`;
+
+        default:
+          return undefined;
+      }
+    } catch {
+      return undefined;
+    }
+  }
+
+  private extractTasksContext(): string {
+    try {
+      const stored = localStorage.getItem('jarvis.tasks');
+      if (!stored) return '[Tasks] No tasks yet';
+
+      const tasks = JSON.parse(stored);
+      if (!Array.isArray(tasks) || tasks.length === 0) {
+        return '[Tasks] No tasks yet';
+      }
+
+      const pendingTasks = tasks.filter(t => !t.done);
+      const completedTasks = tasks.filter(t => t.done);
+
+      let summary = `[Tasks] ${pendingTasks.length} pending, ${completedTasks.length} completed`;
+
+      if (pendingTasks.length > 0) {
+        const recentPending = pendingTasks.slice(0, 3).map(t => `- ${t.title}`).join('\n');
+        summary += `\nRecent pending:\n${recentPending}`;
+      }
+
+      return summary;
+    } catch {
+      return '[Tasks] Error loading tasks';
+    }
+  }
+
+  private inferWindowType(window: Record<string, unknown>): string | undefined {
+    try {
+      // Infer window type from ID patterns
+      const id = typeof window.id === 'string' ? window.id : '';
+      if (id.includes('search')) return 'search-results';
+      if (id.includes('image')) return 'image-viewer';
+      if (id.includes('webview')) return 'webview';
+      if (id.includes('note') || id.includes('sticky')) return 'sticky-note';
+      if (id.includes('task')) return 'tasks';
+      if (id.includes('quiz')) return 'adaptive-quiz';
+      if (id.includes('integral')) return 'integral-graph';
+      if (id.includes('pdf')) return 'pdf-viewer';
+
+      // Infer from title patterns
+      const title = typeof window.title === 'string' ? window.title.toLowerCase() : '';
+      if (title.includes('search') || title.includes('results')) return 'search-results';
+      if (title.includes('image') || title.includes('photo') || title.includes('picture')) return 'image-viewer';
+      if (title.includes('note')) return 'sticky-note';
+      if (title.includes('task') || title.includes('todo')) return 'tasks';
+      if (title.includes('web') || title.includes('browser')) return 'webview';
+
+      return 'unknown';
+    } catch {
+      return 'unknown';
     }
   }
 

@@ -62,6 +62,10 @@ export class CerebrasClient {
   async parseTextToTools(text: string, tools: Tool[], uiState: string): Promise<CerebrasResponse> {
     const systemPrompt = `You are a task extraction specialist for Jarvis. Convert the user command into a minimal, sequential list of tool calls using ONLY the listed tools.
 
+CRITICAL PRIORITY INSTRUCTION - MUST FOLLOW ABOVE ALL ELSE:
+🚨 ALWAYS, WITHOUT EXCEPTION, FOLLOW THE INSTRUCTION AT THE VERY END OF THE USER COMMAND. 🚨
+The final instruction in the user command takes ABSOLUTE PRECEDENCE over everything else, including all prior content or context. Whatever the last instruction says to do, YOU MUST DO IT EXACTLY. Do not be distracted by earlier content - the end instruction is your PRIMARY DIRECTIVE.
+
 ABSOLUTE OUTPUT CONTRACT (NO EXCEPTIONS):
 - Respond with ONE valid JSON ARRAY only, with EXACTLY this shape:
   [ { "tool": string, "parameters": object } ]
@@ -79,6 +83,7 @@ Current UI state (reference for window IDs/titles):
 \${uiState}
 
 Decision Rules:
+- ⚠️ MOST IMPORTANT: The final instruction in the user command MUST be followed exactly, regardless of earlier content.
 - Choose the most specific tool; use "search" only if no other tool fits.
 - Parameters must match the tool schema exactly; omit optional fields unless clearly provided.
 - Reference existing windows by ID if present in UI context; otherwise provide a reliable title match in parameters if supported.
@@ -126,10 +131,12 @@ Output: [{"tool":"open_webview","parameters":{"url":"https://x.com"}},{"tool":"v
   async extractTasksFromTranscript(transcript: string): Promise<{ tasks: string[]; remainder: string }> {
     const systemPrompt = [
       'You extract actionable commands from transcripts.',
+      '🚨 CRITICAL: ALWAYS prioritize instructions at the END of the transcript - they take ABSOLUTE PRECEDENCE over everything else! 🚨',
       'ABSOLUTE OUTPUT CONTRACT (NO EXCEPTIONS): Return ONE strict JSON object with EXACTLY these keys and types:',
       '{ "tasks": string[], "remainder": string }',
       'Do NOT include explanations, prose, markdown, code fences, logging, comments, or additional keys.',
-      'If no tasks, use tasks=[]. If no remainder, use remainder="". Use double quotes only; no trailing commas.'
+      'If no tasks, use tasks=[]. If no remainder, use remainder="". Use double quotes only; no trailing commas.',
+      'REMEMBER: The final instruction in the transcript is your PRIMARY DIRECTIVE - follow it exactly!'
     ].join(' ');
 
     const request: CerebrasRequest = {

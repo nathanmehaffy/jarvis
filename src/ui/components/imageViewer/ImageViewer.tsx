@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { eventBus } from '@/lib/eventBus';
+import { imageDescriptionService } from '@/ai/imageDescriptionService';
 
 import Image from 'next/image';
 
@@ -12,6 +13,13 @@ interface ImageViewerProps {
 }
 
 export function ImageViewer({ imageUrl, imageName, windowId }: ImageViewerProps) {
+  // Trigger background description generation when component mounts
+  useEffect(() => {
+    if (imageUrl) {
+      imageDescriptionService.preloadDescription(imageUrl, imageName);
+    }
+  }, [imageUrl, imageName]);
+
   return (
     <div className="w-full h-full bg-black flex items-center justify-center overflow-hidden">
       <Image
