@@ -4,6 +4,7 @@ import { useEffect, useState, forwardRef, useImperativeHandle, useRef } from 're
 import { Window } from '../window';
 import { WindowData, WindowManagerState } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
+import { SearchResultsWindow } from '../searchResults';
 
 interface WindowManagerProps {
   children: React.ReactNode;
@@ -299,6 +300,11 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
   };
 
   const openWindow = (windowData: Omit<WindowData, 'isOpen' | 'zIndex'>) => {
+    console.log('🪟 [WindowManager] openWindow STARTED', {
+      windowData: windowData,
+      timestamp: new Date().toISOString()
+    });
+
     // Extract keywords from content if available
     // const windowContent = contentSimilarityAnalyzer.processWindowContent(
     //   windowData.id,
@@ -306,9 +312,22 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
     //   windowData.content || ''
     // );
     setState(prev => {
+      console.log('🔄 [WindowManager] setState callback called', {
+        prevWindowsCount: prev.windows.length,
+        newWindowId: windowData.id,
+        timestamp: new Date().toISOString()
+      });
+
       const currentWindows = prev.windows.filter(w => w.id !== windowData.id);
 
       const optimalPosition = getOptimalPosition(windowData.width, windowData.height, currentWindows);
+
+      console.log('📍 [WindowManager] Calculated optimal position', {
+        windowId: windowData.id,
+        optimalPosition,
+        windowSize: { width: windowData.width, height: windowData.height },
+        timestamp: new Date().toISOString()
+      });
 
       const newWindow = {
         ...windowData,
@@ -332,11 +351,27 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         nextZIndex: prev.nextZIndex + 1
       };
 
+      console.log('✨ [WindowManager] New state prepared', {
+        windowId: windowData.id,
+        totalWindows: newState.windows.length,
+        newWindow: newWindow,
+        timestamp: new Date().toISOString()
+      });
+
       // Emit only lightweight event; logs muted
       setTimeout(() => {
         try {
           eventBus.emit('window:opened', { id: windowData.id, type: 'ui', title: windowData.title });
-        } catch {}
+          console.log('📢 [WindowManager] Emitted window:opened event', {
+            windowId: windowData.id,
+            timestamp: new Date().toISOString()
+          });
+        } catch (error) {
+          console.error('❌ [WindowManager] Failed to emit window:opened event', {
+            error,
+            timestamp: new Date().toISOString()
+          });
+        }
       }, 0);
 
       // Reset animation state after opening animation completes
@@ -349,9 +384,13 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
               : w
           )
         }));
+        console.log('🎬 [WindowManager] Animation state reset', {
+          windowId: windowData.id,
+          timestamp: new Date().toISOString()
+        });
       }, 80);
 
-
+      console.log('✅ [WindowManager] openWindow COMPLETED, returning new state');
       return newState;
     });
   };
@@ -514,23 +553,61 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
 
   useEffect(() => {
     const unsubs = [
-      eventBus.on('ui:open_window', (data: { id?: string; title?: string; content?: string; position?: { x?: number; y?: number }; size?: { width?: number; height?: number } }) => {
+      eventBus.on('ui:open_window', (data: { id?: string; title?: string; content?: string; type?: string; position?: { x?: number; y?: number }; size?: { width?: number; height?: number } }) => {
+        console.log('🎨 [WindowManager] ui:open_window event received', {
+          data: data,
+          timestamp: new Date().toISOString()
+        });
+
         const id = data?.id || `win_${Date.now()}`;
         const title = data?.title || 'Window';
-        openWindow({
+        const content = String(data?.content || '');
+
+        console.log('🔧 [WindowManager] Processing window data', {
+          id, title, content: content.slice(0, 100) + '...', type: data?.type,
+          timestamp: new Date().toISOString()
+        });
+
+        // Determine component based on type
+        let component: React.ComponentType;
+        if (data?.type === 'search-results') {
+          console.log('🔍 [WindowManager] Creating SearchResultsWindow component');
+          component = () => <SearchResultsWindow content={content} />;
+        } else {
+          console.log('📄 [WindowManager] Creating generic window component');
+          component = () => (
+            <div className="p-4 text-cyan-200 text-sm whitespace-pre-wrap">{content}</div>
+          );
+        }
+
+        const windowConfig = {
           id,
           title,
-          content: String(data?.content || ''),
-          component: () => (
-            <div className="p-4 text-cyan-200 text-sm whitespace-pre-wrap">{String(data?.content || '')}</div>
-          ),
+          content,
+          component,
           isMinimized: false,
           isFullscreen: false,
-          x: 0,
-          y: 0,
+          x: data?.position?.x ?? 0,
+          y: data?.position?.y ?? 0,
           width: data?.size?.width ?? 500,
           height: data?.size?.height ?? 400
+        };
+
+        console.log('🚀 [WindowManager] Calling openWindow with config', {
+          windowConfig,
+          timestamp: new Date().toISOString()
         });
+
+        try {
+          openWindow(windowConfig);
+          console.log('✅ [WindowManager] openWindow called successfully');
+        } catch (error) {
+          console.error('❌ [WindowManager] openWindow failed', {
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            timestamp: new Date().toISOString()
+          });
+        }
       }),
       eventBus.on('ui:close_window', (data: { windowId?: string }) => {
         if (data?.windowId) {

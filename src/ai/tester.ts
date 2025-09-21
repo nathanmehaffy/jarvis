@@ -107,7 +107,13 @@ export class AITester {
       'start lesson "Derivatives" step 1',
       'open a quiz titled "Chapter 3 Review"',
       'give me a hint about "Pythagorean theorem"',
-      'explain "binary search" step by step'
+      'explain "binary search" step by step',
+
+      // Search commands
+      'search for current economic policy',
+      'find information about artificial intelligence',
+      'look up the weather in New York',
+      'research quantum computing advancements'
     ];
 
     for (const command of testCommands) {
@@ -151,6 +157,14 @@ export class AITester {
       
       eventBus.on('window:closed', (data: any) => {
         console.log('📊 Window event - closed:', data);
+      }),
+
+      eventBus.on('ai:searching', (data: any) => {
+        console.log('🔍 Search started:', data);
+      }),
+
+      eventBus.on('ai:search_complete', (data: any) => {
+        console.log('✅ Search completed:', data);
       })
     ];
 

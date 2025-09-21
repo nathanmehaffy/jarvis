@@ -15,10 +15,14 @@ export class TaskParser {
     const uiContext = input?.uiContext || {};
     const actionHistory = Array.isArray(input?.actionHistory) ? input.actionHistory : [];
 
-    console.log('[TaskParser] parseTextToTasks (stateful) called', {
+    console.log('🔍 [TaskParser] parseTextToTasks STARTED', {
+      fullTranscript: fullTranscript,
+      transcriptLength: fullTranscript.length,
       transcriptPreview: fullTranscript.slice(-120),
       uiWindows: Array.isArray(uiContext?.windows) ? uiContext.windows.length : 0,
-      actionCount: actionHistory.length
+      actionCount: actionHistory.length,
+      actionHistory: actionHistory,
+      timestamp: new Date().toISOString()
     });
 
     const systemPrompt = [
@@ -43,6 +47,15 @@ export class TaskParser {
       availableTools: AVAILABLE_TOOLS
     } as any;
 
+    console.log('🤖 [TaskParser] Calling Cerebras LLM', {
+      model: 'qwen-3-235b-a22b-instruct-2507',
+      systemPrompt: systemPrompt,
+      userPayload: jsonPayload,
+      payloadSize: JSON.stringify(jsonPayload).length,
+      timestamp: new Date().toISOString()
+    });
+
+    const llmCallStart = Date.now();
     const response = await this.cerebrasClient.createChatCompletion({
       model: 'qwen-3-235b-a22b-instruct-2507',
       messages: [
@@ -52,6 +65,14 @@ export class TaskParser {
       response_format: { type: 'json_object' },
       max_tokens: 800,
       temperature: 0.1
+    });
+
+    const llmCallEnd = Date.now();
+    console.log('📝 [TaskParser] Cerebras LLM Response received', {
+      responseTime: `${llmCallEnd - llmCallStart}ms`,
+      response: response,
+      content: response?.choices?.[0]?.message?.content,
+      timestamp: new Date().toISOString()
     });
 
     const content: unknown = response?.choices?.[0]?.message?.content;
@@ -73,7 +94,54 @@ export class TaskParser {
       }
     };
 
-    return coerce(content);
+    let result = coerce(content);
+
+    console.log('🔧 [TaskParser] LLM Response coerced to result', {
+      rawContent: content,
+      parsedResult: result,
+      toolCallsFound: result.new_tool_calls.length,
+      timestamp: new Date().toISOString()
+    });
+
+    // Fallback parsing for search commands if Cerebras didn't find any
+    if (result.new_tool_calls.length === 0) {
+      console.log('🔍 [TaskParser] No tool calls from LLM, trying fallback search parsing');
+      const searchPatterns = [
+        /search\s+(?:for\s+)?(.+)/i,
+        /find\s+(?:information\s+)?(?:about\s+)?(.+)/i,
+        /look\s+up\s+(.+)/i,
+        /research\s+(.+)/i
+      ];
+
+      for (const pattern of searchPatterns) {
+        const match = fullTranscript.match(pattern);
+        if (match && match[1]) {
+          const query = match[1].trim();
+          result = {
+            new_tool_calls: [{
+              tool: 'search',
+              parameters: { query },
+              sourceText: match[0]
+            }]
+          };
+          console.log('✅ [TaskParser] Found search command via fallback parsing:', {
+            query: query,
+            matchedPattern: pattern.toString(),
+            fullMatch: match[0],
+            timestamp: new Date().toISOString()
+          });
+          break;
+        }
+      }
+    }
+
+    console.log('✅ [TaskParser] parseTextToTasks COMPLETED', {
+      finalResult: result,
+      toolCallsToExecute: result.new_tool_calls.length,
+      timestamp: new Date().toISOString()
+    });
+
+    return result;
   }
 
   private generateTaskDescription(toolName: string, parameters: any): string {

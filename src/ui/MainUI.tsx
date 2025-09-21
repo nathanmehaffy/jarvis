@@ -26,6 +26,7 @@ export function MainUI() {
   const [isImageDropMinimized, setIsImageDropMinimized] = useState(false);
   const [isDesktopMinimized, setIsDesktopMinimized] = useState(false);
   const [showDebugSidebar, setShowDebugSidebar] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
     aiManager.initialize();
@@ -44,6 +45,8 @@ export function MainUI() {
       eventBus.on('ai:text_command_processed', () => setAiStatus('ready')),
       eventBus.on('ai:ai_response_generated', () => setAiStatus('ready')),
       eventBus.on('ai:error', () => setAiStatus('error')),
+      eventBus.on('ai:searching', () => setIsSearching(true)),
+      eventBus.on('ai:search_complete', () => setIsSearching(false)),
       eventBus.on('window:opened', (data: { id?: string }) => {
         if (typeof data?.id === 'string') {
           setOpenWindows(prev => new Set<string>([...prev, data.id as string]));
@@ -474,6 +477,19 @@ export function MainUI() {
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
             </svg>
             <span className="text-sm font-medium">Jarvis is thinking…</span>
+          </div>
+        </div>
+      )}
+
+      {/* Global search indicator */}
+      {isSearching && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60]">
+          <div className="flex items-center gap-3 px-4 py-2 rounded-full bg-blue-900/60 text-white border border-blue-400/30 shadow-2xl backdrop-blur">
+            <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+            </svg>
+            <span className="text-sm font-medium">Jarvis is searching…</span>
           </div>
         </div>
       )}

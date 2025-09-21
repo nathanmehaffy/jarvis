@@ -1,0 +1,1 @@
+export { SearchResultsWindow } from './SearchResultsWindow';

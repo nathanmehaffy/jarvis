@@ -71,6 +71,20 @@ export const AVAILABLE_TOOLS: Tool[] = [
       },
       required: []
     }
+  },
+  {
+    name: 'search',
+    description: 'Performs a web-grounded search using AI and displays results in a new window. Use for queries like "search for [topic]" or "find information about [subject]".',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The search query or topic to research'
+        }
+      },
+      required: ['query']
+    }
   }
 ];
 

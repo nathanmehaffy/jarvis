@@ -72,31 +72,78 @@ self.addEventListener('message', (event) => {
 
 async function processTextCommand(data: any) {
   try {
+    console.log('🚀 [AI Worker] processTextCommand STARTED', {
+      data: data,
+      dataType: typeof data,
+      timestamp: new Date().toISOString()
+    });
+
     // New payload accepts { transcript, uiContext? } or string
     const transcript = (typeof data?.transcript === 'string') ? data.transcript : (typeof data === 'string' ? data : '');
     if (!transcript) {
-      throw new Error('No transcript provided');
+      const error = 'No transcript provided';
+      console.error('❌ [AI Worker] Validation failed', { data, error, timestamp: new Date().toISOString() });
+      throw new Error(error);
     }
+
+    console.log('📝 [AI Worker] Transcript extracted', {
+      transcript: transcript,
+      transcriptLength: transcript.length,
+      timestamp: new Date().toISOString()
+    });
+
     if (data && typeof data === 'object' && data.uiContext) {
+      console.log('🖥️ [AI Worker] UI Context received', {
+        oldContext: state.uiContext,
+        newContext: data.uiContext,
+        timestamp: new Date().toISOString()
+      });
       state.uiContext = data.uiContext;
     }
 
     updateTranscriptHistory(transcript);
 
-    console.log('[AI Worker] Processing transcript', {
+    console.log('📊 [AI Worker] State updated, processing transcript', {
+      transcriptHistory: state.transcriptHistory,
+      actionHistoryCount: state.actionHistory.length,
       uiContextSummary: {
-        windowsCount: Array.isArray(state.uiContext?.windows) ? state.uiContext.windows.length : 0
-      }
+        windowsCount: Array.isArray(state.uiContext?.windows) ? state.uiContext.windows.length : 0,
+        context: state.uiContext
+      },
+      timestamp: new Date().toISOString()
     });
 
     // Ask parser for new tool calls based on ConversationState
+    console.log('🤖 [AI Worker] Calling taskParser.parseTextToTasks', {
+      conversationState: {
+        transcript: state.transcriptHistory,
+        actionHistory: state.actionHistory,
+        uiContext: state.uiContext
+      },
+      timestamp: new Date().toISOString()
+    });
+
+    const parseStart = Date.now();
     const parseResult: any = await taskParser.parseTextToTasks({
       transcript: state.transcriptHistory,
       actionHistory: state.actionHistory,
       uiContext: state.uiContext
     } as any);
+    const parseEnd = Date.now();
+
+    console.log('📄 [AI Worker] taskParser response received', {
+      parseTime: `${parseEnd - parseStart}ms`,
+      parseResult: parseResult,
+      timestamp: new Date().toISOString()
+    });
 
     const newCalls: Array<{ tool: string; parameters: any; sourceText: string }> = Array.isArray(parseResult?.new_tool_calls) ? parseResult.new_tool_calls : [];
+
+    console.log('🔧 [AI Worker] Tool calls extracted from parse result', {
+      newCallsCount: newCalls.length,
+      newCalls: newCalls,
+      timestamp: new Date().toISOString()
+    });
 
     const executionResults: any[] = [];
     for (const call of newCalls) {
@@ -107,39 +154,89 @@ async function processTextCommand(data: any) {
         sourceText: call.sourceText,
         timestamp: Date.now()
       };
+
+      console.log('🔨 [AI Worker] Executing tool call', {
+        record: record,
+        uiContext: state.uiContext,
+        timestamp: new Date().toISOString()
+      });
+
       try {
+        const executionStart = Date.now();
         const res = await toolExecutor.executeTasks([
           { id: record.actionId, tool: record.tool, parameters: record.parameters, description: record.tool }
         ], state.uiContext);
+        const executionEnd = Date.now();
+
+        console.log('✅ [AI Worker] Tool execution completed', {
+          actionId: record.actionId,
+          tool: record.tool,
+          executionTime: `${executionEnd - executionStart}ms`,
+          results: res,
+          timestamp: new Date().toISOString()
+        });
+
         executionResults.push(...res);
+      } catch (error) {
+        console.error('❌ [AI Worker] Tool execution failed', {
+          actionId: record.actionId,
+          tool: record.tool,
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: new Date().toISOString()
+        });
       } finally {
         appendActionRecord(record);
+        console.log('📝 [AI Worker] Action record appended to history', {
+          record: record,
+          totalHistoryLength: state.actionHistory.length,
+          timestamp: new Date().toISOString()
+        });
       }
     }
 
+    const responseData = {
+      id: generateId(),
+      success: true,
+      originalText: transcript,
+      tasks: newCalls,
+      executionResults,
+      processingTime: 0,
+      timestamp: Date.now()
+    };
+
+    console.log('🏁 [AI Worker] processTextCommand COMPLETED successfully', {
+      responseData: responseData,
+      timestamp: new Date().toISOString()
+    });
+
     self.postMessage({
       type: 'TEXT_COMMAND_PROCESSED',
-      data: {
-        id: generateId(),
-        success: true,
-        originalText: transcript,
-        tasks: newCalls,
-        executionResults,
-        processingTime: 0,
-        timestamp: Date.now()
-      }
+      data: responseData
     });
     
   } catch (error) {
-    console.error('[AI Worker] Error processing text command:', error);
-    
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('❌ [AI Worker] processTextCommand FAILED', {
+      error: errorMsg,
+      errorStack: error instanceof Error ? error.stack : undefined,
+      data: data,
+      timestamp: new Date().toISOString()
+    });
+
+    const errorData = {
+      error: errorMsg,
+      textInput: (typeof data?.transcript === 'string') ? data.transcript : undefined,
+      type: 'text_command_error'
+    };
+
+    console.log('📢 [AI Worker] Posting error message to main thread', {
+      errorData: errorData,
+      timestamp: new Date().toISOString()
+    });
+
     self.postMessage({
       type: 'AI_ERROR',
-      data: { 
-        error: error instanceof Error ? error.message : String(error), 
-        textInput: (typeof data?.transcript === 'string') ? data.transcript : undefined,
-        type: 'text_command_error'
-      }
+      data: errorData
     });
   }
 }

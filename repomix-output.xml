@@ -76,7 +76,6 @@ src/
     useSpeechTranscription.ts
     VoiceTaskListener.tsx
   lib/
-    contentSimilarity.ts
     eventBus.ts
   ui/
     components/
@@ -93,12 +92,6 @@ src/
       barGraphWindow/
         BarGraphWindow.tsx
         index.ts
-      connectionControls/
-        ConnectionControls.tsx
-        index.ts
-      connectionRenderer/
-        ConnectionRenderer.tsx
-        index.ts
       debugSidebar/
         DebugSidebar.tsx
         index.ts
@@ -111,8 +104,6 @@ src/
       imageViewer/
         ImageViewer.tsx
         index.ts
-      imageWindow/
-        ImageWindow.tsx
       inputWindow/
         index.ts
         InputWindow.tsx
@@ -151,7 +142,6 @@ next.config.ts
 package.json
 postcss.config.mjs
 README.md
-test_debug.js
 tsconfig.json
 </directory_structure>
 
@@ -408,170 +398,6 @@ export function SpeechIndicator() {
 }
 </file>
 
-<file path="src/lib/contentSimilarity.ts">
-interface SimilarityScore {
-  windowId1: string;
-  windowId2: string;
-  score: number;
-  keywords: string[];
-}
-
-interface WindowContent {
-  id: string;
-  title: string;
-  content: string;
-  keywords: string[];
-  wordCount: number;
-}
-
-export class ContentSimilarityAnalyzer {
-  private stopWords = new Set([
-    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
-    'by', 'from', 'up', 'about', 'into', 'through', 'during', 'before', 'after',
-    'above', 'below', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have',
-    'has', 'had', 'do', 'does', 'did', 'will', 'would', 'should', 'could', 'can',
-    'may', 'might', 'must', 'shall', 'this', 'that', 'these', 'those', 'i', 'you',
-    'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my', 'your',
-    'his', 'her', 'its', 'our', 'their'
-  ]);
-
-  extractKeywords(text: string): string[] {
-    if (!text) return [];
-
-    const words = text
-      .toLowerCase()
-      .replace(/[^\w\s]/g, ' ')
-      .split(/\s+/)
-      .filter(word =>
-        word.length > 2 &&
-        !this.stopWords.has(word) &&
-        !/^\d+$/.test(word)
-      );
-
-    const wordFreq = new Map<string, number>();
-    words.forEach(word => {
-      wordFreq.set(word, (wordFreq.get(word) || 0) + 1);
-    });
-
-    return Array.from(wordFreq.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(entry => entry[0]);
-  }
-
-  processWindowContent(id: string, title: string, content: string): WindowContent {
-    const combinedText = `${title} ${content}`;
-    const keywords = this.extractKeywords(combinedText);
-    const wordCount = combinedText.split(/\s+/).length;
-
-    return {
-      id,
-      title,
-      content,
-      keywords,
-      wordCount
-    };
-  }
-
-  calculateJaccardSimilarity(keywords1: string[], keywords2: string[]): number {
-    if (keywords1.length === 0 && keywords2.length === 0) return 0;
-
-    const set1 = new Set(keywords1);
-    const set2 = new Set(keywords2);
-
-    const intersection = new Set([...set1].filter(x => set2.has(x)));
-    const union = new Set([...set1, ...set2]);
-
-    return intersection.size / union.size;
-  }
-
-  calculateCosineSimilarity(keywords1: string[], keywords2: string[]): number {
-    const allKeywords = Array.from(new Set([...keywords1, ...keywords2]));
-
-    if (allKeywords.length === 0) return 0;
-
-    const vector1 = allKeywords.map(keyword => keywords1.includes(keyword) ? 1 : 0);
-    const vector2 = allKeywords.map(keyword => keywords2.includes(keyword) ? 1 : 0);
-
-    const dotProduct = vector1.reduce((sum: number, a: number, i: number) => sum + (a * vector2[i]), 0);
-    const magnitude1 = Math.sqrt(vector1.reduce((sum: number, a: number) => sum + (a * a), 0));
-    const magnitude2 = Math.sqrt(vector2.reduce((sum: number, a: number) => sum + (a * a), 0));
-
-    if (magnitude1 === 0 || magnitude2 === 0) return 0;
-
-    return dotProduct / (magnitude1 * magnitude2);
-  }
-
-  calculateSimilarity(window1: WindowContent, window2: WindowContent): SimilarityScore {
-    const jaccardScore = this.calculateJaccardSimilarity(window1.keywords, window2.keywords);
-    const cosineScore = this.calculateCosineSimilarity(window1.keywords, window2.keywords);
-
-    // Combine scores with weights
-    const combinedScore = (jaccardScore * 0.6) + (cosineScore * 0.4);
-
-    // Boost score if titles are similar
-    const titleSimilarity = this.calculateJaccardSimilarity(
-      this.extractKeywords(window1.title),
-      this.extractKeywords(window2.title)
-    );
-
-    const finalScore = Math.min(1, combinedScore + (titleSimilarity * 0.2));
-
-    const commonKeywords = window1.keywords.filter(k => window2.keywords.includes(k));
-
-    const calcDetails = {
-      window1: { id: window1.id, title: window1.title, keywords: window1.keywords },
-      window2: { id: window2.id, title: window2.title, keywords: window2.keywords },
-      jaccardScore: Math.round(jaccardScore * 100) / 100,
-      cosineScore: Math.round(cosineScore * 100) / 100,
-      combinedScore: Math.round(combinedScore * 100) / 100,
-      titleSimilarity: Math.round(titleSimilarity * 100) / 100,
-      finalScore: Math.round(finalScore * 100) / 100,
-      commonKeywords
-    };
-
-    console.log('🧮 Similarity calculation:', calcDetails);
-
-    // Send to system output via event bus when available (browser only)
-    if (typeof window !== 'undefined') {
-      try {
-        // dynamic import to avoid SSR issues
-        // eslint-disable-next-line @typescript-eslint/no-floating-promises
-        import('@/lib/eventBus').then(({ eventBus }) => {
-          eventBus.emit('system:output', {
-            text: `🧮 Similarity calculation:\n${JSON.stringify(calcDetails, null, 2)}\n\n`
-          });
-        });
-      } catch {}
-    }
-
-    return {
-      windowId1: window1.id,
-      windowId2: window2.id,
-      score: finalScore,
-      keywords: commonKeywords
-    };
-  }
-
-  analyzeSimilarities(windows: WindowContent[]): SimilarityScore[] {
-    const similarities: SimilarityScore[] = [];
-
-    for (let i = 0; i < windows.length; i++) {
-      for (let j = i + 1; j < windows.length; j++) {
-        const similarity = this.calculateSimilarity(windows[i], windows[j]);
-        if (similarity.score > 0.1) { // Only include significant similarities
-          similarities.push(similarity);
-        }
-      }
-    }
-
-    return similarities.sort((a, b) => b.score - a.score);
-  }
-}
-
-export const contentSimilarityAnalyzer = new ContentSimilarityAnalyzer();
-</file>
-
 <file path="src/lib/eventBus.ts">
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type EventCallback<T = any> = (data: T) => void;
@@ -670,769 +496,6 @@ export type { DataPoint, BarGraphProps, GraphBounds } from './barGraph.types';
 
 <file path="src/ui/components/barGraphWindow/index.ts">
 export { BarGraphWindow } from './BarGraphWindow';
-</file>
-
-<file path="src/ui/components/connectionControls/ConnectionControls.tsx">
-'use client';
-
-import { useState } from 'react';
-
-interface ConnectionControlsProps {
-  showConnections: boolean;
-  similarityThreshold: number;
-  onToggleConnections: () => void;
-  onThresholdChange: (threshold: number) => void;
-}
-
-export function ConnectionControls({
-  showConnections,
-  similarityThreshold,
-  onToggleConnections,
-  onThresholdChange
-}: ConnectionControlsProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  return (
-    <div className="fixed top-4 right-4 z-50">
-      <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg border border-gray-200">
-        {/* Toggle Button */}
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center space-x-2 px-4 py-2 w-full text-left hover:bg-gray-50 rounded-lg transition-colors"
-        >
-          <svg
-            className="w-5 h-5 text-blue-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
-            />
-          </svg>
-          <span className="text-sm font-medium text-gray-700">Connections</span>
-          <svg
-            className={`w-4 h-4 text-gray-400 transition-transform ${
-              isExpanded ? 'rotate-180' : ''
-            }`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 9l-7 7-7-7"
-            />
-          </svg>
-        </button>
-
-        {/* Expanded Controls */}
-        {isExpanded && (
-          <div className="border-t border-gray-200 p-4 space-y-4">
-            {/* Show/Hide Toggle */}
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700">
-                Show Connections
-              </label>
-              <button
-                onClick={onToggleConnections}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                  showConnections ? 'bg-blue-600' : 'bg-gray-300'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    showConnections ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-
-            {/* Similarity Threshold */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700">
-                  Similarity Threshold
-                </label>
-                <span className="text-sm text-gray-500">
-                  {Math.round(similarityThreshold * 100)}%
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0.1"
-                max="0.9"
-                step="0.1"
-                value={similarityThreshold}
-                onChange={(e) => onThresholdChange(parseFloat(e.target.value))}
-                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-                style={{
-                  background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${
-                    (similarityThreshold - 0.1) / 0.8 * 100
-                  }%, #e5e7eb ${(similarityThreshold - 0.1) / 0.8 * 100}%, #e5e7eb 100%)`
-                }}
-              />
-              <div className="flex justify-between text-xs text-gray-400">
-                <span>Low</span>
-                <span>High</span>
-              </div>
-            </div>
-
-            {/* Legend */}
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-gray-700">Connection System</div>
-              <div className="space-y-1">
-                <div className="flex items-center space-x-2">
-                  <div className="w-6 h-1 bg-blue-500 rounded" style={{height: '4px'}}></div>
-                  <span className="text-xs text-gray-600">Thick = Strong</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-6 h-1 bg-blue-500 rounded" style={{height: '1px'}}></div>
-                  <span className="text-xs text-gray-600">Thin = Weak</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  </div>
-                  <span className="text-xs text-gray-600">Groups by color</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-</file>
-
-<file path="src/ui/components/connectionControls/index.ts">
-export { ConnectionControls } from './ConnectionControls';
-</file>
-
-<file path="src/ui/components/connectionRenderer/ConnectionRenderer.tsx">
-'use client';
-
-import { useRef, useState, useEffect } from 'react';
-import { WindowData } from '../windowManager/windowManager.types';
-
-interface Connection {
-  windowId1: string;
-  windowId2: string;
-  score: number;
-  keywords: string[];
-}
-
-interface ConnectionRendererProps {
-  windows: WindowData[];
-  connections: Connection[];
-  isVisible: boolean;
-  minSimilarityThreshold: number;
-  onDeleteConnection?: (connection: Connection) => void;
-}
-
-export function ConnectionRenderer({
-  windows,
-  connections,
-  isVisible,
-  minSimilarityThreshold,
-  onDeleteConnection
-}: ConnectionRendererProps) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const [hoveredConnection, setHoveredConnection] = useState<Connection | null>(null);
-  const [selectedConnection, setSelectedConnection] = useState<Connection | null>(null);
-  const [, forceUpdate] = useState({});
-  const isDraggingRef = useRef(false);
-  const animationFrameRef = useRef<number | null>(null);
-
-  // Force re-render when windows array changes (positions, etc)
-  useEffect(() => {
-    console.log('🔄 ConnectionRenderer: Windows changed, re-rendering connections');
-    // Use requestAnimationFrame for smoother updates during dragging
-    const animationFrame = requestAnimationFrame(() => {
-      forceUpdate({});
-    });
-
-    return () => cancelAnimationFrame(animationFrame);
-  }, [windows]);
-
-  // Additional effect to handle real-time position updates during dragging
-  useEffect(() => {
-    const handleWindowMove = () => {
-      if (isVisible) {
-        requestAnimationFrame(() => {
-          forceUpdate({});
-        });
-      }
-    };
-
-    // Listen for window position updates via event bus
-    let unsubscribe: (() => void) | null = null;
-
-    import('@/lib/eventBus').then(({ eventBus }) => {
-      unsubscribe = eventBus.on('window:position_changed', handleWindowMove);
-    });
-
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
-  }, [isVisible]);
-
-  // High-frequency updates during window dragging using MutationObserver and mouse events
-  useEffect(() => {
-    if (!isVisible) return;
-
-    const isDragging = false;
-    let dragTimeout: NodeJS.Timeout;
-
-    const forceConnectionUpdate = () => {
-      if (!isDraggingRef.current) return;
-      updateConnectionsDirectly();
-      animationFrameRef.current = requestAnimationFrame(forceConnectionUpdate);
-    };
-
-    const startDragUpdates = () => {
-      if (isDraggingRef.current) return;
-      isDraggingRef.current = true;
-      forceConnectionUpdate();
-    };
-
-    const stopDragUpdates = () => {
-      isDraggingRef.current = false;
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-      if (dragTimeout) {
-        clearTimeout(dragTimeout);
-      }
-    };
-
-    // Watch for style changes on window elements (position updates) and new windows
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        // Handle style changes (position updates)
-        if (mutation.type === 'attributes' &&
-            mutation.attributeName === 'style' &&
-            mutation.target instanceof HTMLElement &&
-            mutation.target.hasAttribute('data-window-id')) {
-
-          // Trigger immediate update when window position changes
-          updateConnectionsDirectly();
-
-          // Start continuous updates if not already running
-          if (!isDraggingRef.current) {
-            startDragUpdates();
-
-            // Stop updates after a short delay if no more changes
-            if (dragTimeout) clearTimeout(dragTimeout);
-            dragTimeout = setTimeout(stopDragUpdates, 100);
-          }
-        }
-
-        // Handle new window elements being added
-        if (mutation.type === 'childList') {
-          mutation.addedNodes.forEach(node => {
-            if (node instanceof HTMLElement) {
-              // Check if the added element is a window or contains windows
-              const windowElements = node.hasAttribute?.('data-window-id')
-                ? [node]
-                : node.querySelectorAll?.('[data-window-id]') || [];
-
-              windowElements.forEach(element => {
-                observer.observe(element, {
-                  attributes: true,
-                  attributeFilter: ['style']
-                });
-              });
-            }
-          });
-        }
-      });
-    });
-
-    // Observe the document body for new windows and existing windows for style changes
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-
-    // Also observe existing window elements
-    const windowElements = document.querySelectorAll('[data-window-id]');
-    windowElements.forEach(element => {
-      observer.observe(element, {
-        attributes: true,
-        attributeFilter: ['style']
-      });
-    });
-
-    // High-frequency mouse tracking for real-time updates during dragging
-    const handleMouseDown = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const windowElement = target.closest('[data-window-id]');
-
-      // Check if we're clicking on a draggable area (title bar)
-      if (windowElement && (target.classList.contains('cursor-move') || target.closest('.cursor-move'))) {
-        startDragUpdates();
-      }
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-      // If any mouse button is pressed, update connections immediately
-      if (e.buttons > 0) {
-        // Force immediate update on every mousemove during drag
-        updateConnectionsDirectly();
-
-        // Also ensure continuous updates are running
-        if (!isDraggingRef.current) {
-          startDragUpdates();
-        }
-      }
-    };
-
-    const handleMouseUp = () => {
-      // Delay stopping to catch any final position updates
-      if (dragTimeout) clearTimeout(dragTimeout);
-      dragTimeout = setTimeout(stopDragUpdates, 100);
-    };
-
-    // Use high frequency event listeners
-    document.addEventListener('mousedown', handleMouseDown, { passive: true });
-    document.addEventListener('mousemove', handleMouseMove, { passive: true });
-    document.addEventListener('mouseup', handleMouseUp, { passive: true });
-
-    return () => {
-      observer.disconnect();
-      document.removeEventListener('mousedown', handleMouseDown);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      stopDragUpdates();
-    };
-  }, [isVisible]); // Keep dependencies stable
-
-  const getWindowCenter = (windowId: string) => {
-    // First try to get the actual DOM position for real-time updates during dragging
-    const windowElement = document.querySelector(`[data-window-id="${windowId}"]`) as HTMLElement;
-    if (windowElement) {
-      const rect = windowElement.getBoundingClientRect();
-      const scrollX = globalThis.window.scrollX || document.documentElement.scrollLeft;
-      const scrollY = globalThis.window.scrollY || document.documentElement.scrollTop;
-
-      return {
-        x: rect.left + scrollX + rect.width / 2,
-        y: rect.top + scrollY + rect.height / 2
-      };
-    }
-
-    // Fallback to stored window data if DOM element not found
-    const windowData = windows.find(w => w.id === windowId);
-    if (!windowData) return { x: 0, y: 0 };
-
-    return {
-      x: windowData.x + windowData.width / 2,
-      y: windowData.y + windowData.height / 2
-    };
-  };
-
-  // Direct SVG update function that bypasses React rendering
-  const updateConnectionsDirectly = () => {
-    if (!svgRef.current || !isVisible) return;
-
-    const filteredConnections = connections.filter(
-      conn => conn.score >= minSimilarityThreshold
-    );
-
-    filteredConnections.forEach((connection, index) => {
-      const pathId = `connection-${connection.windowId1}-${connection.windowId2}`;
-      const pathElement = svgRef.current?.querySelector(`[data-connection-id="${pathId}"]`) as SVGPathElement;
-
-      if (pathElement) {
-        const start = getWindowCenter(connection.windowId1);
-        const end = getWindowCenter(connection.windowId2);
-
-        if (start.x !== 0 || start.y !== 0 || end.x !== 0 || end.y !== 0) {
-          // Create curved path
-          const midX = (start.x + end.x) / 2;
-          const midY = (start.y + end.y) / 2;
-          const distance = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
-          const curvature = Math.min(distance * 0.2, 50);
-
-          const angle = Math.atan2(end.y - start.y, end.x - start.x);
-          const perpAngle = angle + Math.PI / 2;
-          const controlX = midX + Math.cos(perpAngle) * curvature;
-          const controlY = midY + Math.sin(perpAngle) * curvature;
-
-          const pathData = `M ${start.x} ${start.y} Q ${controlX} ${controlY} ${end.x} ${end.y}`;
-          pathElement.setAttribute('d', pathData);
-        }
-      }
-    });
-  };
-
-  // Generate consistent colors for connection groups
-  const getConnectionGroupColor = (connectionIndex: number) => {
-    const colors = [
-      '#3B82F6', // Blue
-      '#EF4444', // Red
-      '#10B981', // Green
-      '#F59E0B', // Yellow
-      '#8B5CF6', // Purple
-      '#EC4899', // Pink
-      '#06B6D4', // Cyan
-      '#F97316', // Orange
-      '#84CC16', // Lime
-      '#6366F1', // Indigo
-    ];
-    return colors[connectionIndex % colors.length];
-  };
-
-  const getConnectionWidth = (score: number) => {
-    // Much more dramatic thickness variation: 1px to 8px
-    return Math.max(1, Math.round(score * 8));
-  };
-
-  // Group connections by connected components
-  const getConnectionGroups = () => {
-    const filteredConnections = connections.filter(
-      conn => conn.score >= minSimilarityThreshold
-    );
-
-    if (filteredConnections.length === 0) return [];
-
-    // Create adjacency map
-    const adjacency = new Map<string, Set<string>>();
-
-    filteredConnections.forEach(conn => {
-      if (!adjacency.has(conn.windowId1)) {
-        adjacency.set(conn.windowId1, new Set());
-      }
-      if (!adjacency.has(conn.windowId2)) {
-        adjacency.set(conn.windowId2, new Set());
-      }
-      adjacency.get(conn.windowId1)!.add(conn.windowId2);
-      adjacency.get(conn.windowId2)!.add(conn.windowId1);
-    });
-
-    // Find connected components using DFS
-    const visited = new Set<string>();
-    const groups: string[][] = [];
-
-    const dfs = (windowId: string, currentGroup: string[]) => {
-      if (visited.has(windowId)) return;
-      visited.add(windowId);
-      currentGroup.push(windowId);
-
-      const neighbors = adjacency.get(windowId) || new Set();
-      neighbors.forEach(neighbor => {
-        if (!visited.has(neighbor)) {
-          dfs(neighbor, currentGroup);
-        }
-      });
-    };
-
-    adjacency.forEach((_, windowId) => {
-      if (!visited.has(windowId)) {
-        const group: string[] = [];
-        dfs(windowId, group);
-        if (group.length > 0) {
-          groups.push(group);
-        }
-      }
-    });
-
-    return groups;
-  };
-
-  const connectionGroups = getConnectionGroups();
-
-  // Create mapping from windowId to group index
-  const windowToGroupIndex = new Map<string, number>();
-  connectionGroups.forEach((group, groupIndex) => {
-    group.forEach(windowId => {
-      windowToGroupIndex.set(windowId, groupIndex);
-    });
-  });
-
-  const filteredConnections = connections.filter(
-    conn => conn.score >= minSimilarityThreshold
-  );
-
-  const renderInfo = {
-    isVisible,
-    connectionsTotal: connections.length,
-    filteredConnections: filteredConnections.length,
-    threshold: minSimilarityThreshold,
-    allConnections: connections.map(c => ({
-      ...c,
-      scorePercent: Math.round(c.score * 100) + '%'
-    }))
-  };
-
-  console.log('🎨 ConnectionRenderer:', renderInfo);
-
-  // Send to system output
-  import('@/lib/eventBus').then(({ eventBus }) => {
-    eventBus.emit('system:output', {
-      text: `🎨 ConnectionRenderer:\n${JSON.stringify(renderInfo, null, 2)}\n\n`
-    });
-  });
-
-  if (!isVisible || filteredConnections.length === 0) {
-    const noRenderInfo = { isVisible, filteredLength: filteredConnections.length };
-    console.log('❌ No connections to render:', noRenderInfo);
-
-    import('@/lib/eventBus').then(({ eventBus }) => {
-      eventBus.emit('system:output', {
-        text: `❌ No connections to render:\n${JSON.stringify(noRenderInfo, null, 2)}\n\n`
-      });
-    });
-
-    return null;
-  }
-
-  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
-  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 1080;
-
-  return (
-    <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 5 }}>
-      <svg
-        ref={svgRef}
-        className="w-full h-full"
-        width={viewportWidth}
-        height={viewportHeight}
-        viewBox={`0 0 ${viewportWidth} ${viewportHeight}`}
-        style={{ pointerEvents: 'auto' }}
-        onClick={() => setSelectedConnection(null)}
-      >
-        <defs>
-          <filter id="glow">
-            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-            <feMerge>
-              <feMergeNode in="coloredBlur"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
-          </filter>
-        </defs>
-
-
-        {filteredConnections.map((connection, index) => {
-          const start = getWindowCenter(connection.windowId1);
-          const end = getWindowCenter(connection.windowId2);
-
-          if (index === 0) {
-            console.log('🎯 First connection coordinates:', {
-              windowId1: connection.windowId1,
-              windowId2: connection.windowId2,
-              start,
-              end
-            });
-          }
-
-          if (start.x === 0 && start.y === 0 || end.x === 0 && end.y === 0) {
-            return null;
-          }
-
-          const isHovered = hoveredConnection?.windowId1 === connection.windowId1 &&
-                           hoveredConnection?.windowId2 === connection.windowId2;
-          const isSelected = selectedConnection?.windowId1 === connection.windowId1 &&
-                           selectedConnection?.windowId2 === connection.windowId2;
-
-          // Get group color based on window group or use gray for deleted connections
-          const groupIndex = windowToGroupIndex.get(connection.windowId1) || 0;
-          const connectionColor = connection.score === 0
-            ? '#6B7280' // Gray color for deleted connections (0%)
-            : getConnectionGroupColor(groupIndex);
-
-          // Create a curved path for better aesthetics
-          const midX = (start.x + end.x) / 2;
-          const midY = (start.y + end.y) / 2;
-          const distance = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
-          const curvature = Math.min(distance * 0.2, 50);
-
-          // Calculate perpendicular offset for curve
-          const angle = Math.atan2(end.y - start.y, end.x - start.x);
-          const perpAngle = angle + Math.PI / 2;
-          const controlX = midX + Math.cos(perpAngle) * curvature;
-          const controlY = midY + Math.sin(perpAngle) * curvature;
-
-          const pathData = `M ${start.x} ${start.y} Q ${controlX} ${controlY} ${end.x} ${end.y}`;
-
-          // Calculate the exact point on the Bézier curve at t=0.5 (midpoint)
-          const t = 0.5;
-          const curvePointX = (1 - t) * (1 - t) * start.x + 2 * (1 - t) * t * controlX + t * t * end.x;
-          const curvePointY = (1 - t) * (1 - t) * start.y + 2 * (1 - t) * t * controlY + t * t * end.y;
-
-          const connectionId = `connection-${connection.windowId1}-${connection.windowId2}`;
-
-          return (
-            <g key={`${connection.windowId1}-${connection.windowId2}`}>
-              {/* Invisible wider hover and click area */}
-              <path
-                d={pathData}
-                stroke="transparent"
-                strokeWidth={connection.score === 0 ? 10 : getConnectionWidth(connection.score) * 5}
-                fill="none"
-                style={{
-                  pointerEvents: 'stroke',
-                  strokeLinecap: 'round',
-                  cursor: connection.score === 0 ? 'default' : 'pointer'
-                }}
-                onMouseEnter={() => setHoveredConnection(connection)}
-                onMouseLeave={() => setHoveredConnection(null)}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (connection.score > 0) { // Only allow selection of non-deleted connections
-                    setSelectedConnection(isSelected ? null : connection);
-                  }
-                }}
-              />
-
-              {/* Main connection line */}
-              <path
-                data-connection-id={connectionId}
-                d={pathData}
-                stroke={connectionColor}
-                strokeWidth={connection.score === 0 ? 1 : getConnectionWidth(connection.score)}
-                fill="none"
-                opacity={connection.score === 0 ? 0.4 : (isSelected ? 1.0 : (isHovered ? 0.9 : 0.8))}
-                filter={isSelected || isHovered ? "url(#glow)" : undefined}
-                strokeDasharray={connection.score === 0 ? "3,6" : (isSelected ? "8,4" : (isHovered ? "5,5" : undefined))}
-                className="transition-all duration-300"
-                style={{
-                  pointerEvents: 'none',
-                  strokeLinecap: 'round'
-                }}
-              />
-
-
-              {/* Similarity score label on hover */}
-              {isHovered && !isSelected && (
-                <g>
-                  <rect
-                    x={midX - 35}
-                    y={midY - 30}
-                    width="70"
-                    height="25"
-                    fill="rgba(0, 0, 0, 0.85)"
-                    rx="6"
-                  />
-                  <text
-                    x={midX}
-                    y={midY - 12}
-                    textAnchor="middle"
-                    fill="white"
-                    fontSize="13"
-                    fontWeight="bold"
-                  >
-                    {Math.round(connection.score * 100)}%
-                  </text>
-                </g>
-              )}
-
-              {/* Selected connection info and delete button */}
-              {isSelected && (
-                <g>
-                  {/* Score tooltip */}
-                  <rect
-                    x={midX - 35}
-                    y={midY - 45}
-                    width="70"
-                    height="25"
-                    fill="rgba(0, 0, 0, 0.85)"
-                    rx="6"
-                  />
-                  <text
-                    x={midX}
-                    y={midY - 27}
-                    textAnchor="middle"
-                    fill="white"
-                    fontSize="13"
-                    fontWeight="bold"
-                  >
-                    {Math.round(connection.score * 100)}%
-                  </text>
-
-                  {/* Delete button */}
-                  {onDeleteConnection && (
-                    <g>
-                      <circle
-                        cx={midX}
-                        cy={midY - 5}
-                        r="12"
-                        fill="rgba(239, 68, 68, 0.9)"
-                        stroke="white"
-                        strokeWidth="2"
-                        style={{ cursor: 'pointer' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteConnection(connection);
-                          setSelectedConnection(null);
-                        }}
-                      />
-                      <text
-                        x={midX}
-                        y={midY - 1}
-                        textAnchor="middle"
-                        fill="white"
-                        fontSize="14"
-                        fontWeight="bold"
-                        style={{
-                          cursor: 'pointer',
-                          pointerEvents: 'none',
-                          userSelect: 'none'
-                        }}
-                      >
-                        ×
-                      </text>
-                    </g>
-                  )}
-                </g>
-              )}
-            </g>
-          );
-        })}
-      </svg>
-
-      {/* Tooltip for hovered connection */}
-      {hoveredConnection && (
-        <div className="absolute top-4 left-4 bg-black/80 text-white p-3 rounded-lg shadow-lg max-w-xs pointer-events-none z-10">
-          <div className="text-sm font-semibold mb-1">
-            Similarity: {Math.round(hoveredConnection.score * 100)}%
-          </div>
-          {hoveredConnection.keywords.length > 0 && (
-            <div className="text-xs">
-              <div className="mb-1">Common keywords:</div>
-              <div className="flex flex-wrap gap-1">
-                {hoveredConnection.keywords.slice(0, 5).map((keyword, i) => (
-                  <span key={i} className="bg-blue-600 px-1 py-0.5 rounded text-xs">
-                    {keyword}
-                  </span>
-                ))}
-                {hoveredConnection.keywords.length > 5 && (
-                  <span className="text-gray-400 text-xs">
-                    +{hoveredConnection.keywords.length - 5} more
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-</file>
-
-<file path="src/ui/components/connectionRenderer/index.ts">
-export { ConnectionRenderer } from './ConnectionRenderer';
 </file>
 
 <file path="src/ui/components/debugSidebar/index.ts">
@@ -1732,49 +795,6 @@ const config = {
 };
 
 export default config;
-</file>
-
-<file path="test_debug.js">
-// Test debug script - run in browser console after loading the app
-
-console.log("=== Debug Test for Multiple Windows and Close All ===");
-
-// Test multiple windows parsing
-async function testMultipleWindows() {
-  console.log("\n--- Testing Multiple Windows ---");
-  console.log("Command: 'open 7 windows saying cheese'");
-  
-  try {
-    await aiTester.testCommand("open 7 windows saying cheese");
-  } catch (e) {
-    console.error("Error:", e);
-  }
-}
-
-// Test close all windows
-async function testCloseAll() {
-  console.log("\n--- Testing Close All Windows ---");
-  console.log("Command: 'close all windows'");
-  
-  try {
-    await aiTester.testCommand("close all windows");
-  } catch (e) {
-    console.error("Error:", e);
-  }
-}
-
-// Test window registry
-function testWindowRegistry() {
-  console.log("\n--- Testing Window Registry ---");
-  console.log("Current windows in registry:", windowRegistry.getAll());
-  console.log("Registry count:", windowRegistry.getAll().length);
-}
-
-// Run tests
-console.log("Running tests...");
-setTimeout(testMultipleWindows, 1000);
-setTimeout(testCloseAll, 3000);
-setTimeout(testWindowRegistry, 5000);
 </file>
 
 <file path="tsconfig.json">
@@ -3499,242 +2519,6 @@ next-env.d.ts
 CLAUDE.md
 </file>
 
-<file path="src/ai/tester.ts">
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/**
- * AI System Tester
- * 
- * This is a basic testing utility for the Jarvis AI system.
- * It allows you to test text commands and see how they get parsed into tasks
- * and executed by the tool system.
- * 
- * Usage:
- * - Import this file and call runTests() to run predefined tests
- * - Use testCommand(text) to test individual commands
- * - Use listenToEvents() to see real-time AI processing events
- */
-
-import { TaskParser } from './taskParser';
-import { ToolExecutor } from './toolExecutor';
-import { eventBus } from '@/lib/eventBus';
-
-export class AITester {
-  private taskParser: TaskParser;
-  private toolExecutor: ToolExecutor;
-  private eventListeners: (() => void)[] = [];
-  private requestQueue: Promise<void> = Promise.resolve();
-
-  constructor() {
-    this.taskParser = new TaskParser();
-    this.toolExecutor = new ToolExecutor();
-  }
-
-  /**
-   * Test a single text command
-   */
-  async testCommand(text: string): Promise<void> {
-    this.requestQueue = this.requestQueue.then(async () => {
-      console.log(`\n🧪 Testing command: "${text}"`);
-      console.log('─'.repeat(50));
-
-      try {
-        // Parse the command (may use Cerebras; fallback handles offline/rate limits)
-        console.log('📝 Parsing command...');
-        const parseResult = await this.taskParser.parseTextToTasks({ transcript: text, actionHistory: [], uiContext: {} });
-
-        // New parser always returns { new_tool_calls }
-
-        console.log(`✅ Parsed ${parseResult.new_tool_calls.length} tool call(s):`);
-        parseResult.new_tool_calls.forEach((call, index) => {
-          console.log(`   ${index + 1}. ${call.tool}`);
-          console.log(`      Parameters:`, call.parameters);
-          console.log(`      Source:`, call.sourceText);
-        });
-
-        // Execute the tasks
-        console.log('\n⚡ Executing tasks...');
-        const executionResults = await this.toolExecutor.executeTasks(parseResult.new_tool_calls.map((c, i) => ({ id: `test_${i}`, tool: c.tool, parameters: c.parameters, description: c.tool })));
-
-        executionResults.forEach((result, index) => {
-          if (result.success) {
-            console.log(`   ✅ Task ${index + 1} executed successfully`);
-            if (result.result) {
-              console.log(`      Result:`, result.result);
-            }
-          } else {
-            console.log(`   ❌ Task ${index + 1} failed:`, result.error);
-          }
-        });
-
-        console.log('─'.repeat(50));
-        console.log('✨ Test completed\n');
-
-      } catch (error) {
-        console.error('💥 Test failed with error:', error);
-      }
-    });
-
-    return this.requestQueue;
-  }
-
-  /**
-   * Run a suite of predefined tests
-   */
-  async runTests(): Promise<void> {
-    console.log('🚀 Starting AI System Tests');
-    console.log('═'.repeat(60));
-
-    const testCommands = [
-      // Simple window operations
-      'open a window',
-      'create a sticky note',
-      'close window window_123',
-      
-      // Complex commands
-      'open a sticky note that says "Remember to buy groceries"',
-      'create a notification window titled "Meeting Alert"',
-      'open a settings dialog and close window abc123',
-      
-      // Edge cases
-      'show me a "Project Ideas" sticky note',
-      'close all windows', // This should fail gracefully
-      '', // Empty command
-      
-      // Natural language variations
-      'I need a reminder note about the dentist appointment',
-      'please open a window for the user settings',
-      'dismiss window xyz789',
-
-      // Education-focused commands
-      'start lesson "Derivatives" step 1',
-      'open a quiz titled "Chapter 3 Review"',
-      'give me a hint about "Pythagorean theorem"',
-      'explain "binary search" step by step'
-    ];
-
-    for (const command of testCommands) {
-      await this.testCommand(command);
-      // Small delay between tests for readability
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-
-    console.log('🎉 All tests completed!');
-  }
-
-  /**
-   * Listen to AI events in real-time
-   */
-  listenToEvents(): void {
-    console.log('👂 Listening to AI events...');
-    
-    // Clear existing listeners
-    this.clearEventListeners();
-
-    const unsubscribers = [
-      eventBus.on('ai:text_command_processed', (data: any) => {
-        console.log('🤖 Text command processed:', data);
-      }),
-      
-      eventBus.on('ai:error', (error: any) => {
-        console.error('🚨 AI Error:', error);
-      }),
-      
-      eventBus.on('ui:open_window', (data: any) => {
-        console.log('🪟 Window opened:', data);
-      }),
-      
-      eventBus.on('ui:close_window', (data: any) => {
-        console.log('🔲 Window closed:', data);
-      }),
-      
-      eventBus.on('window:opened', (data: any) => {
-        console.log('📊 Window event - opened:', data);
-      }),
-      
-      eventBus.on('window:closed', (data: any) => {
-        console.log('📊 Window event - closed:', data);
-      })
-    ];
-
-    this.eventListeners = unsubscribers;
-  }
-
-  /**
-   * Stop listening to events
-   */
-  clearEventListeners(): void {
-    this.eventListeners.forEach(unsubscribe => unsubscribe());
-    this.eventListeners = [];
-  }
-
-  /**
-   * Test the Cerebras integration specifically
-   */
-  async testCerebrasIntegration(): Promise<void> {
-    console.log('🧠 Testing Cerebras Integration');
-    console.log('─'.repeat(40));
-
-    try {
-      const testText = 'open a sticky note saying "test cerebras"';
-      console.log(`Testing with: "${testText}"`);
-      
-      const result = await this.taskParser.parseTextToTasks({ transcript: testText, actionHistory: [], uiContext: {} });
-      
-      if (Array.isArray(result.new_tool_calls)) {
-        console.log('✅ Cerebras integration working');
-        console.log('Calls created:', result.new_tool_calls.length);
-      } else {
-        console.log('⚠️ Cerebras integration failed, using fallback parsing');
-        console.log('No calls created');
-      }
-    } catch (error) {
-      console.error('❌ Cerebras test failed:', error);
-    }
-  }
-
-  /**
-   * Quick test for model verification
-   */
-  async testModelOnly(): Promise<void> {
-    console.log('🔍 Testing Model Access');
-    console.log('─'.repeat(30));
-    
-    try {
-      const simpleText = 'hello';
-      await this.taskParser.parseTextToTasks({ transcript: simpleText, actionHistory: [], uiContext: {} });
-      console.log('✅ Model accessible.');
-    } catch (error) {
-      console.error('❌ Model test failed:', error);
-    }
-  }
-
-  /**
-   * Interactive testing - call this to test commands manually
-   */
-  async interactive(): Promise<void> {
-    console.log('🎮 Interactive AI Testing Mode');
-    console.log('Use aiTester.testCommand("your command") to test commands');
-    console.log('Use aiTester.runTests() to run all predefined tests');
-    console.log('Use aiTester.listenToEvents() to monitor events');
-    
-    // Start listening to events by default
-    this.listenToEvents();
-  }
-}
-
-// Create a global instance for easy testing
-export const aiTester = new AITester();
-
-// Auto-start interactive mode when this file is imported
-if (typeof window !== 'undefined') {
-  (window as any).aiTester = aiTester;
-  // Expose the event bus for console-based inspection and custom listeners
-  (window as any).eventBus = eventBus;
-  console.log('🧪 AI Tester loaded! Use window.aiTester in browser console');
-  console.log('🔌 EventBus exposed as window.eventBus');
-}
-</file>
-
 <file path="src/ai/tools.ts">
 import { Tool } from './types';
 
@@ -4218,6 +3002,242 @@ export type {
 } from './types';
 </file>
 
+<file path="src/ai/tester.ts">
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * AI System Tester
+ * 
+ * This is a basic testing utility for the Jarvis AI system.
+ * It allows you to test text commands and see how they get parsed into tasks
+ * and executed by the tool system.
+ * 
+ * Usage:
+ * - Import this file and call runTests() to run predefined tests
+ * - Use testCommand(text) to test individual commands
+ * - Use listenToEvents() to see real-time AI processing events
+ */
+
+import { TaskParser } from './taskParser';
+import { ToolExecutor } from './toolExecutor';
+import { eventBus } from '@/lib/eventBus';
+
+export class AITester {
+  private taskParser: TaskParser;
+  private toolExecutor: ToolExecutor;
+  private eventListeners: (() => void)[] = [];
+  private requestQueue: Promise<void> = Promise.resolve();
+
+  constructor() {
+    this.taskParser = new TaskParser();
+    this.toolExecutor = new ToolExecutor();
+  }
+
+  /**
+   * Test a single text command
+   */
+  async testCommand(text: string): Promise<void> {
+    this.requestQueue = this.requestQueue.then(async () => {
+      console.log(`\n🧪 Testing command: "${text}"`);
+      console.log('─'.repeat(50));
+
+      try {
+        // Parse the command (may use Cerebras; fallback handles offline/rate limits)
+        console.log('📝 Parsing command...');
+        const parseResult = await this.taskParser.parseTextToTasks({ transcript: text, actionHistory: [], uiContext: {} });
+
+        // New parser always returns { new_tool_calls }
+
+        console.log(`✅ Parsed ${parseResult.new_tool_calls.length} tool call(s):`);
+        parseResult.new_tool_calls.forEach((call, index) => {
+          console.log(`   ${index + 1}. ${call.tool}`);
+          console.log(`      Parameters:`, call.parameters);
+          console.log(`      Source:`, call.sourceText);
+        });
+
+        // Execute the tasks
+        console.log('\n⚡ Executing tasks...');
+        const executionResults = await this.toolExecutor.executeTasks(parseResult.new_tool_calls.map((c, i) => ({ id: `test_${i}`, tool: c.tool, parameters: c.parameters, description: c.tool })));
+
+        executionResults.forEach((result, index) => {
+          if (result.success) {
+            console.log(`   ✅ Task ${index + 1} executed successfully`);
+            if (result.result) {
+              console.log(`      Result:`, result.result);
+            }
+          } else {
+            console.log(`   ❌ Task ${index + 1} failed:`, result.error);
+          }
+        });
+
+        console.log('─'.repeat(50));
+        console.log('✨ Test completed\n');
+
+      } catch (error) {
+        console.error('💥 Test failed with error:', error);
+      }
+    });
+
+    return this.requestQueue;
+  }
+
+  /**
+   * Run a suite of predefined tests
+   */
+  async runTests(): Promise<void> {
+    console.log('🚀 Starting AI System Tests');
+    console.log('═'.repeat(60));
+
+    const testCommands = [
+      // Simple window operations
+      'open a window',
+      'create a sticky note',
+      'close window window_123',
+      
+      // Complex commands
+      'open a sticky note that says "Remember to buy groceries"',
+      'create a notification window titled "Meeting Alert"',
+      'open a settings dialog and close window abc123',
+      
+      // Edge cases
+      'show me a "Project Ideas" sticky note',
+      'close all windows', // Should close all open windows
+      '', // Empty command
+      
+      // Natural language variations
+      'I need a reminder note about the dentist appointment',
+      'please open a window for the user settings',
+      'dismiss window xyz789',
+
+      // Education-focused commands
+      'start lesson "Derivatives" step 1',
+      'open a quiz titled "Chapter 3 Review"',
+      'give me a hint about "Pythagorean theorem"',
+      'explain "binary search" step by step'
+    ];
+
+    for (const command of testCommands) {
+      await this.testCommand(command);
+      // Small delay between tests for readability
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    console.log('🎉 All tests completed!');
+  }
+
+  /**
+   * Listen to AI events in real-time
+   */
+  listenToEvents(): void {
+    console.log('👂 Listening to AI events...');
+    
+    // Clear existing listeners
+    this.clearEventListeners();
+
+    const unsubscribers = [
+      eventBus.on('ai:text_command_processed', (data: any) => {
+        console.log('🤖 Text command processed:', data);
+      }),
+      
+      eventBus.on('ai:error', (error: any) => {
+        console.error('🚨 AI Error:', error);
+      }),
+      
+      eventBus.on('ui:open_window', (data: any) => {
+        console.log('🪟 Window opened:', data);
+      }),
+      
+      eventBus.on('ui:close_window', (data: any) => {
+        console.log('🔲 Window closed:', data);
+      }),
+      
+      eventBus.on('window:opened', (data: any) => {
+        console.log('📊 Window event - opened:', data);
+      }),
+      
+      eventBus.on('window:closed', (data: any) => {
+        console.log('📊 Window event - closed:', data);
+      })
+    ];
+
+    this.eventListeners = unsubscribers;
+  }
+
+  /**
+   * Stop listening to events
+   */
+  clearEventListeners(): void {
+    this.eventListeners.forEach(unsubscribe => unsubscribe());
+    this.eventListeners = [];
+  }
+
+  /**
+   * Test the Cerebras integration specifically
+   */
+  async testCerebrasIntegration(): Promise<void> {
+    console.log('🧠 Testing Cerebras Integration');
+    console.log('─'.repeat(40));
+
+    try {
+      const testText = 'open a sticky note saying "test cerebras"';
+      console.log(`Testing with: "${testText}"`);
+      
+      const result = await this.taskParser.parseTextToTasks({ transcript: testText, actionHistory: [], uiContext: {} });
+      
+      if (Array.isArray(result.new_tool_calls)) {
+        console.log('✅ Cerebras integration working');
+        console.log('Calls created:', result.new_tool_calls.length);
+      } else {
+        console.log('⚠️ Cerebras integration failed, using fallback parsing');
+        console.log('No calls created');
+      }
+    } catch (error) {
+      console.error('❌ Cerebras test failed:', error);
+    }
+  }
+
+  /**
+   * Quick test for model verification
+   */
+  async testModelOnly(): Promise<void> {
+    console.log('🔍 Testing Model Access');
+    console.log('─'.repeat(30));
+    
+    try {
+      const simpleText = 'hello';
+      await this.taskParser.parseTextToTasks({ transcript: simpleText, actionHistory: [], uiContext: {} });
+      console.log('✅ Model accessible.');
+    } catch (error) {
+      console.error('❌ Model test failed:', error);
+    }
+  }
+
+  /**
+   * Interactive testing - call this to test commands manually
+   */
+  async interactive(): Promise<void> {
+    console.log('🎮 Interactive AI Testing Mode');
+    console.log('Use aiTester.testCommand("your command") to test commands');
+    console.log('Use aiTester.runTests() to run all predefined tests');
+    console.log('Use aiTester.listenToEvents() to monitor events');
+    
+    // Start listening to events by default
+    this.listenToEvents();
+  }
+}
+
+// Create a global instance for easy testing
+export const aiTester = new AITester();
+
+// Auto-start interactive mode when this file is imported
+if (typeof window !== 'undefined') {
+  (window as any).aiTester = aiTester;
+  // Expose the event bus for console-based inspection and custom listeners
+  (window as any).eventBus = eventBus;
+  console.log('🧪 AI Tester loaded! Use window.aiTester in browser console');
+  console.log('🔌 EventBus exposed as window.eventBus');
+}
+</file>
+
 <file path="src/ai/types.ts">
 type JSONSchema = {
   type: string;
@@ -4423,234 +3443,6 @@ body {
 
 .neon-glow-lime:hover {
   box-shadow: 0 0 12px rgba(163, 230, 53, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-}
-</file>
-
-<file path="src/ui/components/debugSidebar/DebugSidebar.tsx">
-'use client';
-
-import { useState, useEffect } from 'react';
-import { eventBus } from '@/lib/eventBus';
-import type { Task } from '@/ai/types';
-
-type OpenSidebar = 'ui' | 'input' | 'ai' | null;
-
-interface DebugSidebarProps {
-  inputStatus: 'idle' | 'listening' | 'processing' | 'error';
-  aiStatus: 'idle' | 'processing' | 'ready' | 'error';
-  apiBudget: { used: number; nextMs: number | null };
-  openInputWindow: () => void;
-  openAIWindow: () => void;
-  openUserNotesWindow: () => void;
-  openSystemOutputWindow: () => void;
-  openGraphWindow: () => void;
-  openBarGraphWindow: () => void;
-  openPieChartWindow: () => void;
-  openPreloadedImageWindow: () => void;
-}
-
-export function DebugSidebar({ 
-  inputStatus, 
-  aiStatus, 
-  apiBudget, 
-  openInputWindow, 
-  openAIWindow, 
-  openUserNotesWindow, 
-  openSystemOutputWindow, 
-  openGraphWindow, 
-  openBarGraphWindow, 
-  openPieChartWindow, 
-  openPreloadedImageWindow 
-}: DebugSidebarProps) {
-  const [openSidebar, setOpenSidebar] = useState<OpenSidebar>(null);
-  const [taskQueue, setTaskQueue] = useState<Task[]>([]);
-  const [currentTask, setCurrentTask] = useState<Task | null>(null);
-  const [recentToolCalls, setRecentToolCalls] = useState<Array<{ task: Task; tool: string; params?: unknown; status: string; timestamp: number; result?: unknown }>>([]);
-  const [inputBuffer, setInputBuffer] = useState<string>('');
-  type SubmittedEntry = { kind: 'submitted'; id: string; text: string; source: string; timestamp: number };
-  type RunEntry = { kind: 'run'; id: string; tool: string; description: string; timestamp: number; status: 'started' | 'completed' | 'failed'; result?: unknown; error?: unknown };
-  type ActionLogEntry = SubmittedEntry | RunEntry;
-  const [aiActionLog, setAiActionLog] = useState<ActionLogEntry[]>([]);
-
-  useEffect(() => {
-    const listeners = [
-      // Input
-      eventBus.on('input:voice_debug', (d: { bufferText?: string }) => {
-        if (d && typeof d.bufferText === 'string') {
-          setInputBuffer(d.bufferText);
-        }
-      }),
-      eventBus.on('input:transcript_updated', (data: { transcript?: string }) => {
-        try {
-          const transcript = String(data?.transcript || '').trim();
-          if (!transcript) return;
-          const entry: SubmittedEntry = { kind: 'submitted', id: Math.random().toString(36).slice(2), text: transcript, source: 'transcript', timestamp: Date.now() };
-          setAiActionLog(prev => [entry, ...prev].slice(0, 30));
-        } catch {}
-      }),
-
-      // AI tasks lifecycle
-      eventBus.on('ai:task_queue_updated', (tasks: Task[]) => setTaskQueue(tasks)),
-      eventBus.on('ai:task_started', ({ task }: { task: Task }) => {
-        setCurrentTask(task);
-        setTaskQueue(prev => prev.filter(t => t.id !== task.id));
-        const entry: RunEntry = { kind: 'run', id: task.id, tool: task.tool, description: task.description, timestamp: Date.now(), status: 'started' };
-        setAiActionLog(prev => [entry, ...prev].slice(0, 30));
-      }),
-      eventBus.on('ai:task_completed', ({ task, result }: { task: Task; result: unknown }) => {
-        setCurrentTask(null);
-        setAiActionLog(prev => prev.map(e => (e.kind === 'run' && e.id === task?.id) ? { ...e, status: 'completed', result } as RunEntry : e));
-      }),
-      eventBus.on('ai:task_failed', ({ task, error }: { task: Task; error: unknown }) => {
-        setCurrentTask(null);
-        setAiActionLog(prev => prev.map(e => (e.kind === 'run' && e.id === task?.id) ? { ...e, status: 'failed', error } as RunEntry : e));
-      }),
-      eventBus.on('ai:tool_call_started', (data: { task: Task; tool: string; params?: unknown }) => {
-        setRecentToolCalls(prev => [{ ...data, status: 'started', timestamp: Date.now() }, ...prev].slice(0, 5));
-      }),
-      eventBus.on('ai:tool_call_completed', (data: { task: Task; tool: string; result?: unknown }) => {
-        setRecentToolCalls(prev => 
-          prev.map(call => call.task.id === data.task.id ? { ...call, status: 'completed', result: data.result } : call)
-        );
-      }),
-    ];
-
-    return () => {
-      listeners.forEach(off => off());
-    };
-  }, []);
-
-  const toggleSidebar = (sidebar: OpenSidebar) => {
-    setOpenSidebar(openSidebar === sidebar ? null : sidebar);
-  };
-
-  return (
-    <div className="fixed right-0 top-0 h-full bg-gray-800/80 backdrop-blur-sm text-white p-4 w-80 z-20 overflow-y-auto">
-      <div className="flex flex-col space-y-2">
-        <button onClick={() => toggleSidebar('ui')} className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-          UI
-        </button>
-        <button onClick={() => toggleSidebar('input')} className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
-          Input
-        </button>
-        <button onClick={() => toggleSidebar('ai')} className="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
-          AI
-        </button>
-      </div>
-
-      {openSidebar && <div className="mt-4 border-t border-gray-600 pt-4" />}
-
-      {openSidebar === 'ui' && (
-        <div>
-          <h2 className="text-lg font-bold mb-2">UI Debug</h2>
-          <div className="space-y-2">
-            <button onClick={openInputWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open Input Window</button>
-            <button onClick={openAIWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open AI Window</button>
-            <button onClick={openUserNotesWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open Personal Notes</button>
-            <button onClick={openSystemOutputWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open System Output</button>
-            <button onClick={openGraphWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open Line Graph</button>
-            <button onClick={openBarGraphWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open Bar Graph</button>
-            <button onClick={openPieChartWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open Pie Chart</button>
-            <button onClick={openPreloadedImageWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open Sample Image</button>
-          </div>
-        </div>
-      )}
-
-      {openSidebar === 'input' && (
-        <div>
-          <h2 className="text-lg font-bold">Input State</h2>
-          <div className="mt-2 space-y-2 text-sm">
-            <div className="flex justify-between"><span>Status:</span> <span className={`px-2 py-0.5 rounded ${inputStatus === 'listening' ? 'bg-red-500' : inputStatus === 'processing' ? 'bg-yellow-500' : inputStatus === 'error' ? 'bg-rose-600' : 'bg-gray-500'}`}>{inputStatus}</span></div>
-            <div className="flex justify-between"><span>API Calls/min:</span> <span>{apiBudget.used}</span></div>
-            {apiBudget.nextMs != null && <div className="flex justify-between"><span>Next Call In:</span> <span>{Math.max(0, Math.round(apiBudget.nextMs/1000))}s</span></div>}
-          </div>
-
-          <div className="mt-4">
-            <h3 className="font-bold">Text Buffer</h3>
-            <div className="mt-1 text-xs bg-gray-700/50 p-2 rounded max-h-40 overflow-auto whitespace-pre-wrap break-words">
-              {inputBuffer ? inputBuffer : <span className="text-gray-400">Empty</span>}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {openSidebar === 'ai' && (
-        <div>
-          <h2 className="text-lg font-bold">AI State</h2>
-          <div className="mt-2 space-y-2 text-sm">
-            <div className="flex justify-between"><span>Status:</span> <span className={`px-2 py-0.5 rounded ${aiStatus === 'processing' ? 'bg-yellow-500' : aiStatus === 'error' ? 'bg-rose-600' : 'bg-emerald-600'}`}>{aiStatus}</span></div>
-          </div>
-
-          <div className="mt-4">
-            <h3 className="font-bold">Task Queue ({taskQueue.length})</h3>
-            <ul className="mt-1 space-y-1 text-xs bg-gray-700/50 p-2 rounded">
-              {taskQueue.map(task => (
-                <li key={task.id} className="truncate">{task.tool}: {task.description}</li>
-              ))}
-              {taskQueue.length === 0 && <li className="text-gray-400">Empty</li>}
-            </ul>
-          </div>
-
-          <div className="mt-4">
-            <h3 className="font-bold">Current Task</h3>
-            <div className="mt-1 text-xs bg-gray-700/50 p-2 rounded">
-              {currentTask ? (
-                <div>
-                  <p><strong>ID:</strong> {currentTask.id}</p>
-                  <p><strong>Tool:</strong> {currentTask.tool}</p>
-                  <p><strong>Desc:</strong> {currentTask.description}</p>
-                </div>
-              ) : (
-                <p className="text-gray-400">None</p>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <h3 className="font-bold">Recent Tool Calls</h3>
-            <ul className="mt-1 space-y-2 text-xs">
-              {recentToolCalls.map((call, i) => (
-                <li key={i} className="bg-gray-700/50 p-2 rounded">
-                  <p><strong>Tool:</strong> {call.tool} ({call.status})</p>
-                  <p className="truncate"><strong>Params:</strong> {JSON.stringify(call.params)}</p>
-                  {call.status === 'completed' && <p className="truncate"><strong>Result:</strong> {JSON.stringify(call.result)}</p>}
-                </li>
-              ))}
-              {recentToolCalls.length === 0 && <li className="text-gray-400">None</li>}
-            </ul>
-          </div>
-
-          <div className="mt-4">
-            <h3 className="font-bold">Action Log</h3>
-            <ul className="mt-1 space-y-2 text-xs">
-              {aiActionLog.map((entry, i) => (
-                <li key={i} className="bg-gray-700/50 p-2 rounded">
-                  {entry.kind === 'submitted' ? (
-                    <div>
-                      <p><strong>Submitted</strong> <span className="text-gray-300">({entry.source})</span></p>
-                      <p className="truncate">{entry.text}</p>
-                    </div>
-                  ) : (
-                    <div>
-                      <p><strong>Run</strong>: {entry.tool} <span className="text-gray-300">({entry.status})</span></p>
-                      <p className="truncate">{entry.description}</p>
-                      {entry.status === 'completed' && !!entry.result && (
-                        <p className="truncate"><strong>Result:</strong> {JSON.stringify(entry.result)}</p>
-                      )}
-                      {entry.status === 'failed' && !!entry.error && (
-                        <p className="truncate text-rose-300"><strong>Error:</strong> {String(entry.error)}</p>
-                      )}
-                    </div>
-                  )}
-                </li>
-              ))}
-              {aiActionLog.length === 0 && <li className="text-gray-400">No actions yet</li>}
-            </ul>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
 </file>
 
@@ -4951,6 +3743,271 @@ export async function POST(request: NextRequest) {
 }
 </file>
 
+<file path="src/ui/components/debugSidebar/DebugSidebar.tsx">
+'use client';
+
+import { useState, useEffect } from 'react';
+import { eventBus } from '@/lib/eventBus';
+import type { Task } from '@/ai/types';
+
+type OpenSidebar = 'ui' | 'input' | 'ai' | null;
+
+interface DebugSidebarProps {
+  inputStatus: 'idle' | 'listening' | 'processing' | 'error';
+  aiStatus: 'idle' | 'processing' | 'ready' | 'error';
+  openInputWindow: () => void;
+  openAIWindow: () => void;
+  openUserNotesWindow: () => void;
+  openSystemOutputWindow: () => void;
+  openGraphWindow: () => void;
+  openBarGraphWindow: () => void;
+  openPieChartWindow: () => void;
+  openPreloadedImageWindow: () => void;
+}
+
+export function DebugSidebar({
+  inputStatus,
+  aiStatus,
+  openInputWindow,
+  openAIWindow,
+  openUserNotesWindow,
+  openSystemOutputWindow,
+  openGraphWindow,
+  openBarGraphWindow,
+  openPieChartWindow,
+  openPreloadedImageWindow
+}: DebugSidebarProps) {
+  const [openSidebar, setOpenSidebar] = useState<OpenSidebar>(null);
+  const [taskQueue, setTaskQueue] = useState<Task[]>([]);
+  const [currentTask, setCurrentTask] = useState<Task | null>(null);
+  const [recentToolCalls, setRecentToolCalls] = useState<Array<{ task: Task; tool: string; params?: unknown; status: string; timestamp: number; result?: unknown }>>([]);
+  const [inputBuffer, setInputBuffer] = useState<string>('');
+  type SubmittedEntry = { kind: 'submitted'; id: string; text: string; source: string; timestamp: number };
+  type RunEntry = { kind: 'run'; id: string; tool: string; description: string; timestamp: number; status: 'started' | 'completed' | 'failed'; result?: unknown; error?: unknown };
+  type ActionLogEntry = SubmittedEntry | RunEntry;
+  const [aiActionLog, setAiActionLog] = useState<ActionLogEntry[]>([]);
+
+  useEffect(() => {
+    const listeners = [
+      // Input
+      eventBus.on('input:voice_debug', (d: { bufferText?: string }) => {
+        if (d && typeof d.bufferText === 'string') {
+          setInputBuffer(d.bufferText);
+        }
+      }),
+      eventBus.on('input:transcript_updated', (data: { transcript?: string }) => {
+        try {
+          const transcript = String(data?.transcript || '').trim();
+          if (!transcript) return;
+          const entry: SubmittedEntry = { kind: 'submitted', id: Math.random().toString(36).slice(2), text: transcript, source: 'transcript', timestamp: Date.now() };
+          setAiActionLog(prev => [entry, ...prev].slice(0, 30));
+        } catch {}
+      }),
+
+      // AI tasks lifecycle
+      eventBus.on('ai:task_queue_updated', (tasks: Task[]) => setTaskQueue(tasks)),
+      eventBus.on('ai:task_started', ({ task }: { task: Task }) => {
+        setCurrentTask(task);
+        setTaskQueue(prev => prev.filter(t => t.id !== task.id));
+        const entry: RunEntry = { kind: 'run', id: task.id, tool: task.tool, description: task.description, timestamp: Date.now(), status: 'started' };
+        setAiActionLog(prev => [entry, ...prev].slice(0, 30));
+      }),
+      eventBus.on('ai:task_completed', ({ task, result }: { task: Task; result: unknown }) => {
+        setCurrentTask(null);
+        setAiActionLog(prev => prev.map(e => (e.kind === 'run' && e.id === task?.id) ? { ...e, status: 'completed', result } as RunEntry : e));
+      }),
+      eventBus.on('ai:task_failed', ({ task, error }: { task: Task; error: unknown }) => {
+        setCurrentTask(null);
+        setAiActionLog(prev => prev.map(e => (e.kind === 'run' && e.id === task?.id) ? { ...e, status: 'failed', error } as RunEntry : e));
+      }),
+      eventBus.on('ai:tool_call_started', (data: { task: Task; tool: string; params?: unknown }) => {
+        setRecentToolCalls(prev => [{ ...data, status: 'started', timestamp: Date.now() }, ...prev].slice(0, 5));
+      }),
+      eventBus.on('ai:tool_call_completed', (data: { task: Task; tool: string; result?: unknown }) => {
+        setRecentToolCalls(prev => 
+          prev.map(call => call.task.id === data.task.id ? { ...call, status: 'completed', result: data.result } : call)
+        );
+      }),
+    ];
+
+    return () => {
+      listeners.forEach(off => off());
+    };
+  }, []);
+
+  const toggleSidebar = (sidebar: OpenSidebar) => {
+    setOpenSidebar(openSidebar === sidebar ? null : sidebar);
+  };
+
+  return (
+    <div className="fixed right-0 top-0 h-full bg-gray-800/80 backdrop-blur-sm text-white p-4 w-80 z-20 overflow-y-auto">
+      <div className="flex flex-col space-y-2">
+        <button onClick={() => toggleSidebar('ui')} className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+          UI
+        </button>
+        <button onClick={() => toggleSidebar('input')} className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+          Input
+        </button>
+        <button onClick={() => toggleSidebar('ai')} className="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
+          AI
+        </button>
+      </div>
+
+      {openSidebar && <div className="mt-4 border-t border-gray-600 pt-4" />}
+
+      {openSidebar === 'ui' && (
+        <div>
+          <h2 className="text-lg font-bold mb-2">UI Debug</h2>
+          <div className="space-y-2">
+            <button onClick={openInputWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open Input Window</button>
+            <button onClick={openAIWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open AI Window</button>
+            <button onClick={openUserNotesWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open Personal Notes</button>
+            <button onClick={openSystemOutputWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open System Output</button>
+            <button onClick={openGraphWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open Line Graph</button>
+            <button onClick={openBarGraphWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open Bar Graph</button>
+            <button onClick={openPieChartWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open Pie Chart</button>
+            <button onClick={openPreloadedImageWindow} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Open Sample Image</button>
+          </div>
+        </div>
+      )}
+
+      {openSidebar === 'input' && (
+        <div>
+          <h2 className="text-lg font-bold">Input State</h2>
+          <div className="mt-2 space-y-2 text-sm">
+            <div className="flex justify-between"><span>Status:</span> <span className={`px-2 py-0.5 rounded ${inputStatus === 'listening' ? 'bg-red-500' : inputStatus === 'processing' ? 'bg-yellow-500' : inputStatus === 'error' ? 'bg-rose-600' : 'bg-gray-500'}`}>{inputStatus}</span></div>
+          </div>
+
+          <div className="mt-4">
+            <h3 className="font-bold">Text Buffer</h3>
+            <div className="mt-1 text-xs bg-gray-700/50 p-2 rounded max-h-40 overflow-auto whitespace-pre-wrap break-words">
+              {inputBuffer ? inputBuffer : <span className="text-gray-400">Empty</span>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {openSidebar === 'ai' && (
+        <div>
+          <h2 className="text-lg font-bold">AI State</h2>
+          <div className="mt-2 space-y-2 text-sm">
+            <div className="flex justify-between"><span>Status:</span> <span className={`px-2 py-0.5 rounded ${aiStatus === 'processing' ? 'bg-yellow-500' : aiStatus === 'error' ? 'bg-rose-600' : 'bg-emerald-600'}`}>{aiStatus}</span></div>
+          </div>
+
+          <div className="mt-4">
+            <h3 className="font-bold">Task Queue ({taskQueue.length})</h3>
+            <ul className="mt-1 space-y-1 text-xs bg-gray-700/50 p-2 rounded">
+              {taskQueue.map(task => (
+                <li key={task.id} className="truncate">{task.tool}: {task.description}</li>
+              ))}
+              {taskQueue.length === 0 && <li className="text-gray-400">Empty</li>}
+            </ul>
+          </div>
+
+          <div className="mt-4">
+            <h3 className="font-bold">Current Task</h3>
+            <div className="mt-1 text-xs bg-gray-700/50 p-2 rounded">
+              {currentTask ? (
+                <div>
+                  <p><strong>ID:</strong> {currentTask.id}</p>
+                  <p><strong>Tool:</strong> {currentTask.tool}</p>
+                  <p><strong>Desc:</strong> {currentTask.description}</p>
+                </div>
+              ) : (
+                <p className="text-gray-400">None</p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <h3 className="font-bold">Recent Tool Calls</h3>
+            <ul className="mt-1 space-y-2 text-xs">
+              {recentToolCalls.map((call, i) => (
+                <li key={i} className="bg-gray-700/50 p-2 rounded">
+                  <p><strong>Tool:</strong> {call.tool} ({call.status})</p>
+                  <p className="truncate"><strong>Params:</strong> {JSON.stringify(call.params)}</p>
+                  {call.status === 'completed' && <p className="truncate"><strong>Result:</strong> {JSON.stringify(call.result)}</p>}
+                </li>
+              ))}
+              {recentToolCalls.length === 0 && <li className="text-gray-400">None</li>}
+            </ul>
+          </div>
+
+          <div className="mt-4">
+            <h3 className="font-bold">Action Log</h3>
+            <ul className="mt-1 space-y-2 text-xs">
+              {aiActionLog.map((entry, i) => (
+                <li key={i} className="bg-gray-700/50 p-2 rounded">
+                  {entry.kind === 'submitted' ? (
+                    <div>
+                      <p><strong>Submitted</strong> <span className="text-gray-300">({entry.source})</span></p>
+                      <p className="truncate">{entry.text}</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <p><strong>Run</strong>: {entry.tool} <span className="text-gray-300">({entry.status})</span></p>
+                      <p className="truncate">{entry.description}</p>
+                      {entry.status === 'completed' && !!entry.result && (
+                        <p className="truncate"><strong>Result:</strong> {JSON.stringify(entry.result)}</p>
+                      )}
+                      {entry.status === 'failed' && !!entry.error && (
+                        <p className="truncate text-rose-300"><strong>Error:</strong> {String(entry.error)}</p>
+                      )}
+                    </div>
+                  )}
+                </li>
+              ))}
+              {aiActionLog.length === 0 && <li className="text-gray-400">No actions yet</li>}
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="src/ui/components/window/window.types.ts">
+export interface WindowProps {
+  id: string;
+  title: string;
+  children: React.ReactNode;
+  initialX?: number;
+  initialY?: number;
+  width?: number;
+  height?: number;
+  minWidth?: number;
+  minHeight?: number;
+  maxWidth?: number;
+  maxHeight?: number;
+  onClose?: () => void;
+  isActive?: boolean;
+  isMinimized: boolean;
+  isFullscreen?: boolean;
+  zIndex?: number;
+  onFocus?: () => void;
+  onMinimize: () => void;
+  onRestore: () => void;
+  onFullscreen?: () => void;
+  onPositionChange?: (id: string, x: number, y: number) => void;
+  onResize?: (width: number, height: number) => void;
+  // New props to unify ImageWindow and support animations
+  lockAspectRatio?: boolean;
+  headerStyle?: 'standard' | 'minimal';
+  resizable?: boolean;
+  animationState?: 'opening' | 'closing' | 'none';
+}
+
+export interface WindowState {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  isMinimized: boolean;
+  zIndex: number;
+}
+</file>
+
 <file path="src/input/VoiceTaskListener.tsx">
 'use client';
 
@@ -4970,21 +4027,17 @@ export function VoiceTaskListener() {
   const [buffer, setBuffer] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [lastError, setLastError] = useState('');
-  const [apiCallTimestamps, setApiCallTimestamps] = useState<number[]>([]);
-  const [nextCallAt, setNextCallAt] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
 
   const bufferRef = useRef(buffer);
-  const apiCallTimestampsRef = useRef(apiCallTimestamps);
   const processingRef = useRef(false);
   const scheduledTimeoutRef = useRef<number | null>(null);
   const scheduledForRef = useRef<number | null>(null);
   const callStartBufferLengthRef = useRef(0);
   const lastBufferAppendAtRef = useRef<number>(0);
   
-  const recentTaskTextsRef = useRef<Map<string, number>>(new Map());
   const latestFullTextRef = useRef<string>('');
   const streamTimerRef = useRef<number | null>(null);
   const lastStreamCallAtRef = useRef<number>(0);
@@ -4998,13 +4051,8 @@ export function VoiceTaskListener() {
   const SILENCE_CONFIRM_MS = 1000; // wait after last final segment to coalesce phrases
   const ENABLE_STREAMING = false; // disable streaming task emission to avoid partial-command actions
 
-  const cleanOld = useCallback((timestamps: number[]): number[] => {
-    const cutoff = Date.now() - 60000;
-    return timestamps.filter(t => t > cutoff);
-  }, []);
 
   useEffect(() => { bufferRef.current = buffer; }, [buffer]);
-  useEffect(() => { apiCallTimestampsRef.current = apiCallTimestamps; }, [apiCallTimestamps]);
 
   const { isListening, isSupported } = useSpeechTranscription({
     autoStart: true,
@@ -5039,18 +4087,17 @@ export function VoiceTaskListener() {
 
   // Compute and emit debug info whenever core state changes
   useEffect(() => {
-    const recent = cleanOld(apiCallTimestampsRef.current);
     eventBus.emit('input:voice_debug', {
       status: !isSupported ? 'error' : processingRef.current ? 'processing' : isListening ? 'listening' : 'idle',
       bufferLength: bufferRef.current.length,
       bufferText: bufferRef.current,
-      apiCallsUsedLastMinute: recent.length,
-      nextCallInMs: nextCallAt ? Math.max(0, nextCallAt - Date.now()) : null,
+      apiCallsUsedLastMinute: 0, // No longer tracking API calls
+      nextCallInMs: null, // No longer rate limiting
       lastError: lastError || null,
       isOnline,
       isSupported
     });
-  }, [buffer, apiCallTimestamps, nextCallAt, lastError, isOnline, isListening, isSupported, cleanOld]);
+  }, [buffer, lastError, isOnline, isListening, isSupported]);
 
   // Online/offline monitoring
   useEffect(() => {
@@ -5112,11 +4159,9 @@ export function VoiceTaskListener() {
     }
     const runAt = Date.now() + delayMs;
     scheduledForRef.current = runAt;
-    setNextCallAt(runAt);
     scheduledTimeoutRef.current = window.setTimeout(() => {
       scheduledTimeoutRef.current = null;
       scheduledForRef.current = null;
-      setNextCallAt(null);
       attemptProcessing('final');
     }, delayMs);
   }, []);
@@ -5126,15 +4171,8 @@ export function VoiceTaskListener() {
     if (processingRef.current) return;
     if (!bufferRef.current) return;
 
-    const now = Date.now();
-    const recent = cleanOld(apiCallTimestampsRef.current);
-    const capWait = recent.length >= 30 ? (60000 - (now - recent[0])) : 0;
-    if (capWait > 0) {
-      scheduleTimer(capWait);
-    } else {
-      attemptProcessing('final');
-    }
-  }, [MIN_DEBOUNCE_MS, cleanOld, isOnline, isSupported, scheduleTimer]);
+    attemptProcessing('final');
+  }, [isOnline, isSupported]);
 
   const scheduleStreamProcessing = useCallback(() => {
     if (!isSupported || !isOnline) return;
@@ -5171,25 +4209,8 @@ export function VoiceTaskListener() {
       if (!hasText) return;
     }
 
-    const now = Date.now();
-    const recent = cleanOld(apiCallTimestampsRef.current);
-
-    if (recent.length >= 30) {
-      const wait = 60000 - (now - recent[0]);
-      if (wait > 0) {
-        if (mode === 'final') {
-          scheduleTimer(wait);
-        } else {
-          // stream mode: reschedule another attempt after cap clears
-          if (streamTimerRef.current !== null) clearTimeout(streamTimerRef.current);
-          streamTimerRef.current = window.setTimeout(() => attemptProcessing('stream'), wait);
-        }
-      }
-      return;
-    }
-
     processNow(mode);
-  }, [cleanOld, isOnline, isSupported, scheduleTimer]);
+  }, [isOnline, isSupported]);
 
   const processNow = useCallback((mode: 'final' | 'stream' = 'final') => {
     const currentBuffer = bufferRef.current;
@@ -5249,812 +4270,13 @@ export function VoiceTaskListener() {
       processingRef.current = false;
       setStatus(isListening ? 'listening' : 'idle');
     }
-  }, [isListening, cleanOld, scheduleProcessing]);
+  }, [isListening]);
 
   // Render nothing; this component orchestrates voice -> tasks
   return null;
 }
 
 export default VoiceTaskListener;
-</file>
-
-<file path="src/ui/components/window/window.types.ts">
-export interface WindowProps {
-  id: string;
-  title: string;
-  children: React.ReactNode;
-  initialX?: number;
-  initialY?: number;
-  width?: number;
-  height?: number;
-  minWidth?: number;
-  minHeight?: number;
-  maxWidth?: number;
-  maxHeight?: number;
-  onClose?: () => void;
-  isActive?: boolean;
-  isMinimized: boolean;
-  isFullscreen?: boolean;
-  zIndex?: number;
-  onFocus?: () => void;
-  onMinimize: () => void;
-  onRestore: () => void;
-  onFullscreen?: () => void;
-  onPositionChange?: (id: string, x: number, y: number) => void;
-  onResize?: (width: number, height: number) => void;
-  // New props to unify ImageWindow and support animations
-  lockAspectRatio?: boolean;
-  headerStyle?: 'standard' | 'minimal';
-  resizable?: boolean;
-  animationState?: 'opening' | 'closing' | 'none';
-}
-
-export interface WindowState {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  isMinimized: boolean;
-  zIndex: number;
-}
-</file>
-
-<file path="src/ui/components/imageWindow/ImageWindow.tsx">
-'use client';
-
-import { useEffect, useRef, useState } from 'react';
-
-interface ImageWindowProps {
-	children: React.ReactNode;
-	id: string;
-	title: string;
-	initialX: number;
-	initialY: number;
-	width: number;
-	height: number;
-	isActive: boolean;
-	onClose: () => void;
-	onFocus: () => void;
-	imageUrl?: string;
-	animationState?: 'opening' | 'closing' | 'none';
-}
-
-export function ImageWindow({
-	children,
-	id,
-	initialX,
-	initialY,
-	width,
-	height,
-	isActive,
-	onClose,
-	onFocus,
-	animationState = 'none'
-}: ImageWindowProps) {
-	const windowRef = useRef<HTMLDivElement>(null);
-	const [position, setPosition] = useState({ x: initialX, y: initialY });
-	const [size, setSize] = useState({ width, height });
-	const isDraggingRef = useRef(false);
-	const isResizingRef = useRef(false);
-	const dragOffsetRef = useRef({ x: 0, y: 0 });
-	const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0, startX: 0, startY: 0 });
-	const resizeDirectionRef = useRef<string>('');
-
-	useEffect(() => {
-		setPosition({ x: initialX, y: initialY });
-	}, [initialX, initialY]);
-
-	useEffect(() => {
-		setSize({ width, height });
-	}, [width, height]);
-
-	const onMouseDown = (e: React.MouseEvent) => {
-		onFocus();
-		isDraggingRef.current = true;
-		dragOffsetRef.current = {
-			x: e.clientX - position.x,
-			y: e.clientY - position.y
-		};
-		document.addEventListener('mousemove', onMouseMove);
-		document.addEventListener('mouseup', onMouseUp);
-	};
-
-	const onResizeMouseDown = (e: React.MouseEvent, direction: string) => {
-		e.stopPropagation();
-		e.preventDefault();
-		onFocus();
-		isResizingRef.current = true;
-		resizeDirectionRef.current = direction;
-		resizeStartRef.current = {
-			x: e.clientX,
-			y: e.clientY,
-			width: size.width,
-			height: size.height,
-			startX: position.x,
-			startY: position.y
-		};
-		document.addEventListener('mousemove', onResizeMouseMove);
-		document.addEventListener('mouseup', onResizeMouseUp);
-	};
-
-	const onMouseMove = (e: MouseEvent) => {
-		if (isDraggingRef.current) {
-			setPosition({
-				x: e.clientX - dragOffsetRef.current.x,
-				y: e.clientY - dragOffsetRef.current.y
-			});
-		}
-	};
-
-	const onResizeMouseMove = (e: MouseEvent) => {
-		if (!isResizingRef.current) return;
-		e.preventDefault();
-		const deltaX = e.clientX - resizeStartRef.current.x;
-		const deltaY = e.clientY - resizeStartRef.current.y;
-		
-		// Calculate the aspect ratio from the original size
-		const originalAspectRatio = resizeStartRef.current.width / resizeStartRef.current.height;
-		
-		let newWidth, newHeight, newX = resizeStartRef.current.startX, newY = resizeStartRef.current.startY;
-		
-		// Use the larger delta for diagonal scaling (preserves aspect ratio)
-		const scaleFactor = Math.max(Math.abs(deltaX), Math.abs(deltaY));
-		const scaleDirection = (deltaX + deltaY) >= 0 ? 1 : -1;
-		const actualDelta = scaleFactor * scaleDirection;
-		
-		switch (resizeDirectionRef.current) {
-			case 'se': // Bottom-right
-				newWidth = Math.max(200, resizeStartRef.current.width + actualDelta);
-				newHeight = newWidth / originalAspectRatio;
-				newX = resizeStartRef.current.startX;
-				newY = resizeStartRef.current.startY;
-				break;
-			case 'sw': // Bottom-left
-				newWidth = Math.max(200, resizeStartRef.current.width - actualDelta);
-				newHeight = newWidth / originalAspectRatio;
-				newX = resizeStartRef.current.startX + (resizeStartRef.current.width - newWidth);
-				newY = resizeStartRef.current.startY;
-				break;
-			case 'ne': // Top-right
-				newWidth = Math.max(200, resizeStartRef.current.width + actualDelta);
-				newHeight = newWidth / originalAspectRatio;
-				newX = resizeStartRef.current.startX;
-				newY = resizeStartRef.current.startY + (resizeStartRef.current.height - newHeight);
-				break;
-			case 'nw': // Top-left
-				newWidth = Math.max(200, resizeStartRef.current.width - actualDelta);
-				newHeight = newWidth / originalAspectRatio;
-				newX = resizeStartRef.current.startX + (resizeStartRef.current.width - newWidth);
-				newY = resizeStartRef.current.startY + (resizeStartRef.current.height - newHeight);
-				break;
-			default:
-				return;
-		}
-		
-		// Ensure minimum dimensions
-		newWidth = Math.max(200, newWidth);
-		newHeight = Math.max(150, newHeight);
-		
-		setSize({ width: newWidth, height: newHeight });
-		setPosition({ x: newX, y: newY });
-	};
-
-	const onMouseUp = () => {
-		isDraggingRef.current = false;
-		document.removeEventListener('mousemove', onMouseMove);
-		document.removeEventListener('mouseup', onMouseUp);
-	};
-
-	const onResizeMouseUp = () => {
-		isResizingRef.current = false;
-		document.removeEventListener('mousemove', onResizeMouseMove);
-		document.removeEventListener('mouseup', onResizeMouseUp);
-	};
-
-	const getAnimationClasses = () => {
-		const baseClasses = 'absolute bg-black/40 backdrop-blur-2xl rounded-2xl shadow-2xl border border-cyan-400/30 overflow-hidden hover:shadow-cyan-400/20 hover:shadow-2xl hover:bg-black/50 will-change-transform transition-all duration-300';
-		const activeClasses = isActive
-			? 'ring-2 ring-cyan-400/50 shadow-cyan-400/30 border-cyan-400/60 shadow-cyan-400/40'
-			: 'shadow-black/40';
-
-		switch (animationState) {
-			case 'opening':
-				return `${baseClasses} ${activeClasses} animate-window-open`;
-			case 'closing':
-				return `${baseClasses} ${activeClasses} animate-window-close`;
-			default:
-				return `${baseClasses} ${activeClasses}`;
-		}
-	};
-
-	return (
-		<div
-			ref={windowRef}
-			data-window-id={id}
-			className={getAnimationClasses()}
-			style={{ 
-				'--window-x': `${position.x}px`,
-				'--window-y': `${position.y}px`,
-				transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
-				width: size.width, 
-				height: size.height
-			} as React.CSSProperties}
-			onMouseDown={(e) => {
-				e.stopPropagation();
-				onFocus();
-			}}
-		>
-			{/* Window controls in top-right corner */}
-			<div className="absolute top-3 right-3 flex space-x-1 z-30">
-				<button
-					onClick={onClose}
-					className="w-3 h-3 rounded-full bg-gradient-to-br from-purple-400 to-violet-600 hover:from-purple-300 hover:to-violet-500 transition-all duration-200 flex-shrink-0 flex items-center justify-center shadow-sm hover:shadow-purple-400/60 hover:shadow-lg transform hover:scale-110 ring-0 hover:ring-1 hover:ring-purple-400/60 neon-glow-purple"
-					title="Close"
-					style={{
-						boxShadow: '0 0 8px rgba(168, 85, 247, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
-					}}
-				>
-					<span className="text-[10px] text-white font-bold leading-none opacity-80 group-hover:opacity-100 transition-opacity duration-200 drop-shadow-sm">
-						×
-					</span>
-				</button>
-			</div>
-
-			{/* Resize handles - all 4 corners */}
-			{/* Bottom-right */}
-			<div
-				className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize z-20 select-none"
-				onMouseDown={(e) => onResizeMouseDown(e, 'se')}
-				style={{
-					background: 'linear-gradient(-45deg, transparent 40%, rgba(255,255,255,0.2) 40%, rgba(255,255,255,0.2) 60%, transparent 60%)'
-				}}
-			/>
-			
-			{/* Bottom-left */}
-			<div
-				className="absolute bottom-0 left-0 w-4 h-4 cursor-sw-resize z-20 select-none"
-				onMouseDown={(e) => onResizeMouseDown(e, 'sw')}
-				style={{
-					background: 'linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.2) 40%, rgba(255,255,255,0.2) 60%, transparent 60%)'
-				}}
-			/>
-			
-			{/* Top-right */}
-			<div
-				className="absolute top-0 right-0 w-4 h-4 cursor-ne-resize z-20 select-none"
-				onMouseDown={(e) => onResizeMouseDown(e, 'ne')}
-				style={{
-					background: 'linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.2) 40%, rgba(255,255,255,0.2) 60%, transparent 60%)'
-				}}
-			/>
-			
-			{/* Top-left */}
-			<div
-				className="absolute top-0 left-0 w-4 h-4 cursor-nw-resize z-20 select-none"
-				onMouseDown={(e) => onResizeMouseDown(e, 'nw')}
-				style={{
-					background: 'linear-gradient(-45deg, transparent 40%, rgba(255,255,255,0.2) 40%, rgba(255,255,255,0.2) 60%, transparent 60%)'
-				}}
-			/>
-
-			{/* Content area - this is the main draggable area */}
-			<div 
-				className="relative w-full h-full cursor-move"
-				onMouseDown={(e) => {
-					e.stopPropagation();
-					onMouseDown(e);
-				}}
-			>
-				{children}
-			</div>
-		</div>
-	);
-}
-
-export default ImageWindow;
-</file>
-
-<file path="src/ai/aiWorker.ts">
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { TaskParser } from './taskParser';
-import { ToolExecutor } from './toolExecutor';
-
-const taskParser = new TaskParser();
-const toolExecutor = new ToolExecutor();
-
-interface ActionRecord {
-  actionId: string;
-  tool: string;
-  parameters: Record<string, any>;
-  sourceText: string;
-  timestamp: number;
-}
-
-interface ConversationState {
-  transcriptHistory: string;
-  actionHistory: ActionRecord[];
-  uiContext: any;
-}
-
-const state: ConversationState = {
-  transcriptHistory: '',
-  actionHistory: [],
-  uiContext: {}
-};
-
-function updateTranscriptHistory(newTranscript: string) {
-  const combined = newTranscript || '';
-  state.transcriptHistory = combined.length > 500 ? combined.slice(-500) : combined;
-}
-
-function appendActionRecord(record: ActionRecord) {
-  state.actionHistory.push(record);
-  if (state.actionHistory.length > 10) {
-    state.actionHistory = state.actionHistory.slice(-10);
-  }
-}
-
-// Startup diagnostics
-try {
-  const isWorkerScope = typeof self !== 'undefined' && (self as unknown as { importScripts?: unknown }).importScripts !== undefined;
-  // location is undefined in dedicated workers in some environments; guard accesses
-  const href = (typeof location !== 'undefined' && location?.href) ? location.href : 'n/a';
-  const origin = (typeof location !== 'undefined' && (location as any)?.origin) ? (location as any).origin : 'n/a';
-  console.log('[AI Worker] Startup', { isWorkerScope, href, origin });
-} catch {
-  // ignore
-}
-
-self.addEventListener('message', (event) => {
-  const { type, data } = event.data;
-  
-  switch (type) {
-    case 'SET_UI_CONTEXT':
-      try { state.uiContext = data || {}; } catch {}
-      break;
-    case 'PROCESS_AI_REQUEST':
-      processAIRequest(data);
-      break;
-    
-    case 'PROCESS_TEXT_COMMAND':
-      processTextCommand(data);
-      break;
-    
-    case 'GENERATE_RESPONSE':
-      generateResponse(data);
-      break;
-    
-    case 'ANALYZE_DATA':
-      analyzeData(data);
-      break;
-    
-    default:
-      console.warn(`Unknown AI worker message type: ${type}`);
-  }
-});
-
-async function processTextCommand(data: any) {
-  try {
-    // New payload accepts { transcript, uiContext? } or string
-    const transcript = (typeof data?.transcript === 'string') ? data.transcript : (typeof data === 'string' ? data : '');
-    if (!transcript) {
-      throw new Error('No transcript provided');
-    }
-    if (data && typeof data === 'object' && data.uiContext) {
-      state.uiContext = data.uiContext;
-    }
-
-    updateTranscriptHistory(transcript);
-
-    console.log('[AI Worker] Processing transcript', {
-      uiContextSummary: {
-        windowsCount: Array.isArray(state.uiContext?.windows) ? state.uiContext.windows.length : 0
-      }
-    });
-
-    // Ask parser for new tool calls based on ConversationState
-    const parseResult: any = await taskParser.parseTextToTasks({
-      transcript: state.transcriptHistory,
-      actionHistory: state.actionHistory,
-      uiContext: state.uiContext
-    } as any);
-
-    const newCalls: Array<{ tool: string; parameters: any; sourceText: string }> = Array.isArray(parseResult?.new_tool_calls) ? parseResult.new_tool_calls : [];
-
-    const executionResults: any[] = [];
-    for (const call of newCalls) {
-      const record: ActionRecord = {
-        actionId: generateId(),
-        tool: call.tool,
-        parameters: call.parameters,
-        sourceText: call.sourceText,
-        timestamp: Date.now()
-      };
-      try {
-        const res = await toolExecutor.executeTasks([
-          { id: record.actionId, tool: record.tool, parameters: record.parameters, description: record.tool }
-        ], state.uiContext);
-        executionResults.push(...res);
-      } finally {
-        appendActionRecord(record);
-      }
-    }
-
-    self.postMessage({
-      type: 'TEXT_COMMAND_PROCESSED',
-      data: {
-        id: generateId(),
-        success: true,
-        originalText: transcript,
-        tasks: newCalls,
-        executionResults,
-        processingTime: 0,
-        timestamp: Date.now()
-      }
-    });
-    
-  } catch (error) {
-    console.error('[AI Worker] Error processing text command:', error);
-    
-    self.postMessage({
-      type: 'AI_ERROR',
-      data: { 
-        error: error instanceof Error ? error.message : String(error), 
-        textInput: (typeof data?.transcript === 'string') ? data.transcript : undefined,
-        type: 'text_command_error'
-      }
-    });
-  }
-}
-
-async function processAIRequest(request: any) {
-  try {
-    // If pre-parsed tasks are provided, execute them directly
-    if (Array.isArray(request?.tasks)) {
-      const executionResults = await toolExecutor.executeTasks(request.tasks);
-      self.postMessage({
-        type: 'AI_TASKS_EXECUTED',
-        data: {
-          id: request.id || generateId(),
-          success: true,
-          tasks: request.tasks,
-          executionResults,
-          timestamp: Date.now()
-        }
-      });
-      return;
-    }
-
-    // Legacy support for existing AI request format
-    // Try to extract text from various possible fields
-    const text = request.text || request.command || request.input || request.prompt?.text;
-    
-    if (text) {
-      // Delegate to the new text command processor
-      await processTextCommand(text);
-      return;
-    }
-    
-    // Fallback to old behavior for non-text requests
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const response = {
-      id: request.id || generateId(),
-      processed: true,
-      timestamp: Date.now(),
-      request
-    };
-    
-    self.postMessage({
-      type: 'AI_REQUEST_PROCESSED',
-      data: response
-    });
-  } catch (error) {
-    self.postMessage({
-      type: 'AI_ERROR',
-      data: { error: error instanceof Error ? error.message : String(error), request }
-    });
-  }
-}
-
-async function generateResponse(prompt: any) {
-  try {
-    // Check if this is a text command that should be processed differently
-    const text = prompt.text || prompt.command || prompt.prompt;
-    
-    if (text && (typeof text === 'string')) {
-      // Delegate to text command processor
-      await processTextCommand(text);
-      return;
-    }
-    
-    // Fallback to simple response generation
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    const response = {
-      id: generateId(),
-      response: `AI response to: ${JSON.stringify(prompt)}`,
-      timestamp: Date.now(),
-      prompt
-    };
-    
-    self.postMessage({
-      type: 'AI_RESPONSE_GENERATED',
-      data: response
-    });
-  } catch (error) {
-    self.postMessage({
-      type: 'AI_ERROR',
-      data: { error: error instanceof Error ? error.message : String(error), prompt }
-    });
-  }
-}
-
-async function analyzeData(data: any) {
-  try {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    const analysis = {
-      id: generateId(),
-      analysis: `Analysis of data: ${JSON.stringify(data)}`,
-      confidence: Math.random(),
-      timestamp: Date.now(),
-      data
-    };
-    
-    self.postMessage({
-      type: 'AI_ANALYSIS_COMPLETE',
-      data: analysis
-    });
-  } catch (error) {
-    self.postMessage({
-      type: 'AI_ERROR',
-      data: { error: error instanceof Error ? error.message : String(error), data }
-    });
-  }
-}
-
-function generateId(): string {
-  return Math.random().toString(36).substr(2, 9);
-}
-
-export {};
-</file>
-
-<file path="src/ai/cerebrasClient.ts">
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { CerebrasRequest, CerebrasResponse, Tool, CerebrasTool } from './types';
-
-export class CerebrasClient {
-  // Client no longer holds API key; all calls go through server route
-  constructor(_apiKey?: string) {}
-
-  async createChatCompletion(request: CerebrasRequest): Promise<CerebrasResponse> {
-    // Always call our internal API route which adds auth server-side
-    let targetUrl = '/api/cerebras-tasks';
-
-    try {
-      // Debug: log environment context from worker/main thread
-      const isWorkerScope = typeof self !== 'undefined' && (self as unknown as { importScripts?: unknown }).importScripts !== undefined;
-
-      // In worker context, construct absolute URL using worker's location
-      if (isWorkerScope) {
-        let workerOrigin = 'http://localhost:3000'; // fallback
-
-        try {
-          // Try to get the actual origin from the worker's location
-          if (typeof location !== 'undefined' && (location as any)?.origin) {
-            workerOrigin = (location as any).origin;
-          } else if (typeof location !== 'undefined' && location?.href) {
-            // Fallback: extract origin from href
-            const url = new URL(location.href);
-            workerOrigin = url.origin;
-          }
-        } catch (error) {
-          console.warn('[CerebrasClient] Failed to determine worker origin:', error);
-        }
-
-        targetUrl = `${workerOrigin}/api/cerebras-tasks`;
-      }
-
-      // Avoid leaking secrets; only log safe runtime details
-      console.log('[CerebrasClient] createChatCompletion', {
-        targetUrl,
-        isWorkerScope,
-        locationHref: (typeof location !== 'undefined' && location?.href) ? location.href : 'n/a',
-        baseHref: (typeof document !== 'undefined' && (document as any)?.baseURI) ? (document as any).baseURI : 'n/a'
-      });
-    } catch {
-      // ignore logging errors
-    }
-
-    const response = await fetch(targetUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cerebrasRequest: request })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Internal API error (${response.status}): ${errorText}`);
-    }
-
-    return await response.json() as CerebrasResponse;
-  }
-
-  async processTextToTasks(text: string, tools: Tool[], uiContext: any = {}): Promise<CerebrasResponse> {
-    const uiState = uiContext.windows && uiContext.windows.length > 0
-      ? `Current open windows:\n${uiContext.windows.map((w: any) => {
-          const raw = (w.content || '').toString();
-          const snippet = raw ? `"${raw.substring(0,100).replace(/\n/g, ' ').replace(/"/g, '\\"')}"${raw.length > 100 ? '...' : ''}` : '(empty)';
-          return `- id: ${w.id}, title: ${w.title}, content: ${snippet}`;
-        }).join('\n')}`
-      : 'No windows are currently open.';
-
-    const systemPrompt = `You are Jarvis, an AI assistant that converts natural language commands into structured tool calls.
-
-${uiState}
-
-Available tools:
-${tools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
-
-Your job is to:
-1. Analyze the user's text input and the current UI state.
-2. Identify what actions they want to perform.
-3. Convert those actions into appropriate tool calls.
-4. When closing a window, use the ID from the list of open windows.
-5. Handle complex multi-command requests by breaking them into multiple tool calls.
-6. Do not invent placeholder content like "hello world" or "none". If content is unspecified, leave context.content empty.
-
-For window operations:
-- When opening windows, infer appropriate window types (sticky-note, notification, dialog, settings, general, lesson, quiz, hint, explainer)
-- Extract relevant context like titles, content, and any positioning hints
-- For sticky notes, use windowType "sticky-note" and include the note content in context.content
-- For education intents:
-  * "lesson" or "start lesson" → windowType "lesson"; set context.title and optional context.metadata.step
-  * "quiz" → windowType "quiz"; set context.title from the prompt
-  * "hint" → windowType "hint"; set context.title to the topic and context.content to the short hint text if provided
-  * "explain" / "step by step" → windowType "explainer"; set context.title to the topic and include brief explanatory content if available
-
-Few-shot guidance (intent → tool call shape):
-- User: "start lesson \"Derivatives\" step 1" → open_window { windowType: "lesson", context: { title: "Derivatives", type: "lesson", metadata: { step: 1 } } }
-- User: "open a quiz titled \"Chapter 3 Review\"" → open_window { windowType: "quiz", context: { title: "Chapter 3 Review", type: "quiz" } }
-- User: "give me a hint about \"Pythagorean theorem\"" → open_window { windowType: "hint", context: { title: "Pythagorean theorem", content: "a^2 + b^2 = c^2", type: "hint" } }
-- User: "explain \"binary search\" step by step" → open_window { windowType: "explainer", context: { title: "Binary search", type: "explainer" } }
-- User: "open 5 windows saying hello" → [create 5 separate open_window calls with same content "hello"]
-- User: "close all windows" → close_window { selector: "all" }
-
-IMPORTANT: When user asks to open multiple windows (e.g., "open 5 windows"), create multiple separate tool calls, one for each window.
-
-Always respond using the available tools. If the request is unclear, make reasonable assumptions.`;
-
-    // Convert our tool format to Cerebras expected format
-    const cerebrasTools: CerebrasTool[] = tools.map(tool => ({
-      type: 'function',
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters
-      }
-    }));
-
-    const request: CerebrasRequest = {
-      model: 'qwen-3-235b-a22b-instruct-2507',
-      messages: [
-        {
-          role: 'system',
-          content: systemPrompt
-        },
-        {
-          role: 'user',
-          content: text
-        }
-      ],
-      tools: cerebrasTools,
-      tool_choice: 'auto',
-      temperature: 0.1,
-      max_tokens: 1000
-    };
-
-    return await this.createChatCompletion(request);
-  }
-
-  async extractTasksFromTranscript(transcript: string): Promise<{ tasks: string[]; remainder: string }> {
-    const systemPrompt = [
-      'You extract actionable commands from transcripts.',
-      'Respond with ONLY a single JSON object: {"tasks": string[], "remainder": string}.',
-      'Do not include any prose, code fences, or extra text before/after the JSON.',
-      'Be aggressive about filtering out irrelevant, random, or filler text; prefer remainder="" unless clearly a partial command.'
-    ].join(' ');
-
-    const request: CerebrasRequest = {
-      model: 'qwen-3-235b-a22b-instruct-2507',
-      messages: [
-        {
-          role: 'system',
-          content: systemPrompt
-        },
-        {
-          role: 'user',
-          content: transcript
-        }
-      ],
-      temperature: 0.1,
-      max_tokens: 400
-    };
-
-    const response = await this.createChatCompletion(request);
-    const content: unknown = response?.choices?.[0]?.message?.content;
-
-    // The backend route used to do this parsing, but now that we are making the client responsible for it, we need to do it here.
-    const coerceResult = (input: unknown): { tasks: string[]; remainder: string } => {
-      const sanitizeTasks = (arr: unknown): string[] => {
-        if (!Array.isArray(arr)) return [];
-        const seen = new Set<string>();
-        const out: string[] = [];
-        for (const v of arr) {
-          if (typeof v !== 'string') continue;
-          const s = v.trim();
-          if (!s) continue;
-          const key = s.toLowerCase();
-          if (seen.has(key)) continue;
-          seen.add(key);
-          out.push(s.slice(0, 200));
-        }
-        return out.slice(0, 10);
-      };
-      const sanitizeRemainder = (text: unknown): string => {
-        if (typeof text !== 'string') return '';
-        const t = text.trim().replace(/\s+/g, ' ');
-        if (!t) return '';
-        if (t.length <= 2) return '';
-        const lower = t.toLowerCase();
-        const fillerTokens = ['uh','um','erm','hmm','like','you know','i mean','ok','okay','yeah','right','so','anyway','basically','kinda','sort of','sorta','yep','nope'];
-        const tokens = lower.split(/\s+/);
-        const fillerCount = tokens.filter(tok => fillerTokens.includes(tok)).length;
-        if (tokens.length > 0 && (fillerCount / tokens.length) > 0.5) return '';
-        const nonWordRatio = ((t.match(/[^a-zA-Z0-9\s.,;:!?'"()\-]/g) || []).length) / t.length;
-        if (nonWordRatio > 0.2) return '';
-        return t.slice(0, 400);
-      };
-      // Already JSON object
-      if (input && typeof input === 'object' && !Array.isArray(input)) {
-        const obj = input as any;
-        return {
-          tasks: sanitizeTasks(obj.tasks),
-          remainder: sanitizeRemainder(obj.remainder)
-        };
-      }
-      // Try to extract JSON from a string
-      if (typeof input === 'string') {
-        const s = input.trim();
-        try {
-          const parsed = JSON.parse(s);
-          return {
-            tasks: sanitizeTasks((parsed as any)?.tasks),
-            remainder: sanitizeRemainder((parsed as any)?.remainder)
-          };
-        } catch {
-          const match = s.match(/\{[\s\S]*\}/);
-          if (match) {
-            try {
-              const parsed2 = JSON.parse(match[0]);
-              return {
-                tasks: sanitizeTasks((parsed2 as any)?.tasks),
-                remainder: sanitizeRemainder((parsed2 as any)?.remainder)
-              };
-            } catch {
-              // fallthrough
-            }
-          }
-        }
-      }
-      return { tasks: [], remainder: '' };
-    };
-
-    return coerceResult(content);
-  }
-}
 </file>
 
 <file path="src/ai/toolExecutor.ts">
@@ -6298,6 +4520,260 @@ export interface WindowManagerState {
 }
 </file>
 
+<file path="src/ai/aiWorker.ts">
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { TaskParser } from './taskParser';
+import { ToolExecutor } from './toolExecutor';
+
+const taskParser = new TaskParser();
+const toolExecutor = new ToolExecutor();
+
+interface ActionRecord {
+  actionId: string;
+  tool: string;
+  parameters: Record<string, any>;
+  sourceText: string;
+  timestamp: number;
+}
+
+interface ConversationState {
+  transcriptHistory: string;
+  actionHistory: ActionRecord[];
+  uiContext: any;
+}
+
+const state: ConversationState = {
+  transcriptHistory: '',
+  actionHistory: [],
+  uiContext: {}
+};
+
+function updateTranscriptHistory(newTranscript: string) {
+  const combined = newTranscript || '';
+  state.transcriptHistory = combined.length > 500 ? combined.slice(-500) : combined;
+}
+
+function appendActionRecord(record: ActionRecord) {
+  state.actionHistory.push(record);
+  if (state.actionHistory.length > 10) {
+    state.actionHistory = state.actionHistory.slice(-10);
+  }
+}
+
+// Startup diagnostics
+try {
+  const isWorkerScope = typeof self !== 'undefined' && (self as unknown as { importScripts?: unknown }).importScripts !== undefined;
+  // location is undefined in dedicated workers in some environments; guard accesses
+  const href = (typeof location !== 'undefined' && location?.href) ? location.href : 'n/a';
+  const origin = (typeof location !== 'undefined' && (location as any)?.origin) ? (location as any).origin : 'n/a';
+  console.log('[AI Worker] Startup', { isWorkerScope, href, origin });
+} catch {
+  // ignore
+}
+
+self.addEventListener('message', (event) => {
+  const { type, data } = event.data;
+  
+  switch (type) {
+    case 'SET_UI_CONTEXT':
+      try { state.uiContext = data || {}; } catch {}
+      break;
+    
+    case 'PROCESS_TEXT_COMMAND':
+      processTextCommand(data);
+      break;
+    
+    case 'GENERATE_RESPONSE':
+      generateResponse(data);
+      break;
+    
+    
+    default:
+      console.warn(`Unknown AI worker message type: ${type}`);
+  }
+});
+
+async function processTextCommand(data: any) {
+  try {
+    // New payload accepts { transcript, uiContext? } or string
+    const transcript = (typeof data?.transcript === 'string') ? data.transcript : (typeof data === 'string' ? data : '');
+    if (!transcript) {
+      throw new Error('No transcript provided');
+    }
+    if (data && typeof data === 'object' && data.uiContext) {
+      state.uiContext = data.uiContext;
+    }
+
+    updateTranscriptHistory(transcript);
+
+    console.log('[AI Worker] Processing transcript', {
+      uiContextSummary: {
+        windowsCount: Array.isArray(state.uiContext?.windows) ? state.uiContext.windows.length : 0
+      }
+    });
+
+    // Ask parser for new tool calls based on ConversationState
+    const parseResult: any = await taskParser.parseTextToTasks({
+      transcript: state.transcriptHistory,
+      actionHistory: state.actionHistory,
+      uiContext: state.uiContext
+    } as any);
+
+    const newCalls: Array<{ tool: string; parameters: any; sourceText: string }> = Array.isArray(parseResult?.new_tool_calls) ? parseResult.new_tool_calls : [];
+
+    const executionResults: any[] = [];
+    for (const call of newCalls) {
+      const record: ActionRecord = {
+        actionId: generateId(),
+        tool: call.tool,
+        parameters: call.parameters,
+        sourceText: call.sourceText,
+        timestamp: Date.now()
+      };
+      try {
+        const res = await toolExecutor.executeTasks([
+          { id: record.actionId, tool: record.tool, parameters: record.parameters, description: record.tool }
+        ], state.uiContext);
+        executionResults.push(...res);
+      } finally {
+        appendActionRecord(record);
+      }
+    }
+
+    self.postMessage({
+      type: 'TEXT_COMMAND_PROCESSED',
+      data: {
+        id: generateId(),
+        success: true,
+        originalText: transcript,
+        tasks: newCalls,
+        executionResults,
+        processingTime: 0,
+        timestamp: Date.now()
+      }
+    });
+    
+  } catch (error) {
+    console.error('[AI Worker] Error processing text command:', error);
+    
+    self.postMessage({
+      type: 'AI_ERROR',
+      data: { 
+        error: error instanceof Error ? error.message : String(error), 
+        textInput: (typeof data?.transcript === 'string') ? data.transcript : undefined,
+        type: 'text_command_error'
+      }
+    });
+  }
+}
+
+
+async function generateResponse(prompt: any) {
+  try {
+    // Check if this is a text command that should be processed differently
+    const text = prompt.text || prompt.command || prompt.prompt;
+    
+    if (text && (typeof text === 'string')) {
+      // Delegate to text command processor
+      await processTextCommand(text);
+      return;
+    }
+    
+    // Fallback to simple response generation
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    const response = {
+      id: generateId(),
+      response: `AI response to: ${JSON.stringify(prompt)}`,
+      timestamp: Date.now(),
+      prompt
+    };
+    
+    self.postMessage({
+      type: 'AI_RESPONSE_GENERATED',
+      data: response
+    });
+  } catch (error) {
+    self.postMessage({
+      type: 'AI_ERROR',
+      data: { error: error instanceof Error ? error.message : String(error), prompt }
+    });
+  }
+}
+
+
+function generateId(): string {
+  return Math.random().toString(36).substr(2, 9);
+}
+
+export {};
+</file>
+
+<file path="src/ai/cerebrasClient.ts">
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { CerebrasRequest, CerebrasResponse, Tool, CerebrasTool } from './types';
+
+export class CerebrasClient {
+  // Client no longer holds API key; all calls go through server route
+  constructor(_apiKey?: string) {}
+
+  async createChatCompletion(request: CerebrasRequest): Promise<CerebrasResponse> {
+    // Always call our internal API route which adds auth server-side
+    let targetUrl = '/api/cerebras-tasks';
+
+    try {
+      // Debug: log environment context from worker/main thread
+      const isWorkerScope = typeof self !== 'undefined' && (self as unknown as { importScripts?: unknown }).importScripts !== undefined;
+
+      // In worker context, construct absolute URL using worker's location
+      if (isWorkerScope) {
+        let workerOrigin = 'http://localhost:3000'; // fallback
+
+        try {
+          // Try to get the actual origin from the worker's location
+          if (typeof location !== 'undefined' && (location as any)?.origin) {
+            workerOrigin = (location as any).origin;
+          } else if (typeof location !== 'undefined' && location?.href) {
+            // Fallback: extract origin from href
+            const url = new URL(location.href);
+            workerOrigin = url.origin;
+          }
+        } catch (error) {
+          console.warn('[CerebrasClient] Failed to determine worker origin:', error);
+        }
+
+        targetUrl = `${workerOrigin}/api/cerebras-tasks`;
+      }
+
+      // Avoid leaking secrets; only log safe runtime details
+      console.log('[CerebrasClient] createChatCompletion', {
+        targetUrl,
+        isWorkerScope,
+        locationHref: (typeof location !== 'undefined' && location?.href) ? location.href : 'n/a',
+        baseHref: (typeof document !== 'undefined' && (document as any)?.baseURI) ? (document as any).baseURI : 'n/a'
+      });
+    } catch {
+      // ignore logging errors
+    }
+
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cerebrasRequest: request })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Internal API error (${response.status}): ${errorText}`);
+    }
+
+    return await response.json() as CerebrasResponse;
+  }
+
+
+}
+</file>
+
 <file path="src/ai/AIManager.ts">
 import { eventBus } from '@/lib/eventBus';
 
@@ -6411,17 +4887,6 @@ export class AIManager {
     } catch {}
   }
 
-  processRequest(request: unknown): void {
-    if (!this.worker) {
-      console.warn('AI worker not initialized');
-      return;
-    }
-
-    this.worker.postMessage({
-      type: 'PROCESS_AI_REQUEST',
-      data: { ...(request as object), uiContext: this.getSerializableUIContext() }
-    });
-  }
 
   processTextCommand(text: string): void {
     if (!this.worker) {
@@ -6447,17 +4912,6 @@ export class AIManager {
     });
   }
 
-  analyzeData(data: unknown): void {
-    if (!this.worker) {
-      console.warn('AI worker not initialized');
-      return;
-    }
-
-    this.worker.postMessage({
-      type: 'ANALYZE_DATA',
-      data: data as object
-    });
-  }
 
   destroy(): void {
     if (this.worker) {
@@ -6790,7 +5244,6 @@ import { useEffect, useState, forwardRef, useImperativeHandle, useRef } from 're
 import { Window } from '../window';
 import { WindowData, WindowManagerState } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
-// import { contentSimilarityAnalyzer } from '@/lib/contentSimilarity';
 
 interface WindowManagerProps {
   children: React.ReactNode;
@@ -7066,77 +5519,6 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
     // logs muted per decision
   };
 
-  // const analyzeWindowSimilarities = useCallback((windows: WindowData[], currentState: WindowManagerState) => {
-  //   console.log('🔍 Starting similarity analysis...');
-  //   eventBus.emit('system:output', { text: '🔍 Starting similarity analysis...\n' });
-
-  //   const windowContents = windows
-  //     .filter(w => w.isOpen && !w.isMinimized)
-  //     .map(w => contentSimilarityAnalyzer.processWindowContent(
-  //       w.id,
-  //       w.title,
-  //       w.content || ''
-  //     ));
-
-  //   const windowsInfo = windowContents.map(w => ({
-  //     id: w.id,
-  //     title: w.title,
-  //     content: w.content.slice(0, 50) + '...',
-  //     keywords: w.keywords,
-  //     wordCount: w.wordCount
-  //   }));
-
-  //   console.log('📊 Window contents processed:', windowsInfo);
-  //   eventBus.emit('system:output', {
-  //     text: `📊 Window contents processed:\n${JSON.stringify(windowsInfo, null, 2)}\n\n`
-  //   });
-
-  //   const similarities = contentSimilarityAnalyzer.analyzeSimilarities(windowContents);
-  //   console.log('🔗 Found similarities:', similarities);
-  //   eventBus.emit('system:output', {
-  //     text: `🔗 Found similarities:\n${JSON.stringify(similarities, null, 2)}\n\n`
-  //   });
-
-  //   const connections: Connection[] = similarities
-  //     .map(sim => ({
-  //       windowId1: sim.windowId1,
-  //       windowId2: sim.windowId2,
-  //       score: sim.score,
-  //       keywords: sim.keywords
-  //     }))
-  //     .filter(conn => {
-  //       const connectionId = getConnectionId(conn.windowId1, conn.windowId2);
-  //       // Filter out deleted connections - keep them in state but set score to 0
-  //       if (currentState.deletedConnections.has(connectionId)) {
-  //         return false; // Don't include deleted connections in the active list
-  //       }
-  //       return true;
-  //     });
-
-  //   // Add deleted connections back with 0% score for display
-  //   const deletedConnectionsToShow: Connection[] = [];
-  //   currentState.deletedConnections.forEach(deletedId => {
-  //     const [windowId1, windowId2] = deletedId.split('--');
-  //     // Only add if both windows still exist
-  //     if (windows.some(w => w.id === windowId1) && windows.some(w => w.id === windowId2)) {
-  //       deletedConnectionsToShow.push({
-  //         windowId1,
-  //         windowId2,
-  //         score: 0,
-  //         keywords: []
-  //       });
-  //     }
-  //   });
-
-  //   const allConnections = [...connections, ...deletedConnectionsToShow];
-
-  //   console.log('✅ Created connections:', allConnections);
-  //   eventBus.emit('system:output', {
-  //     text: `✅ Created connections:\n${JSON.stringify(allConnections, null, 2)}\n\n`
-  //   });
-
-  //   setState(prev => ({ ...prev, connections: allConnections }));
-  // }, []);
 
 
   const addNaturalScatter = (position: { x: number; y: number }, width: number, height: number): { x: number; y: number } => {
@@ -7209,10 +5591,6 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         }));
       }, 80);
 
-      // Trigger similarity analysis after state is updated
-      // setTimeout(() => {
-      //   analyzeWindowSimilarities(newState.windows, newState);
-      // }, 100);
 
       return newState;
     });
@@ -7409,13 +5787,6 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
           )
         }));
 
-        // Re-analyze similarities after a short delay to debounce rapid changes
-        // setTimeout(() => {
-        //   setState(currentState => {
-        //     analyzeWindowSimilarities(currentState.windows, currentState);
-        //     return currentState;
-        //   });
-        // }, 500);
       })
     ];
     return () => { unsubs.forEach((u) => u()); };
@@ -7496,7 +5867,6 @@ export function MainUI() {
   const windowManagerRef = useRef<WindowManagerRef>(null);
   const [inputStatus, setInputStatus] = useState<'idle' | 'listening' | 'processing' | 'error'>('idle');
   const [aiStatus, setAiStatus] = useState<'idle' | 'processing' | 'ready' | 'error'>('idle');
-  const [apiBudget, setApiBudget] = useState<{ used: number; nextMs: number | null }>({ used: 0, nextMs: null });
   const [openWindows, setOpenWindows] = useState<Set<string>>(new Set());
   const [minimizedWindows, setMinimizedWindows] = useState<Set<string>>(new Set());
   const [isImageDropMinimized, setIsImageDropMinimized] = useState(false);
@@ -7513,7 +5883,6 @@ export function MainUI() {
       eventBus.on('speech:ended', () => setInputStatus('idle')),
       eventBus.on('input:voice_debug', (d: { status?: string; apiCallsUsedLastMinute?: number; nextCallInMs?: number }) => {
         setInputStatus((d?.status as 'idle' | 'listening' | 'processing' | 'error') || 'idle');
-        setApiBudget({ used: d?.apiCallsUsedLastMinute ?? 0, nextMs: d?.nextCallInMs ?? null });
       }),
       eventBus.on('ai:initialized', () => setAiStatus('ready')),
       eventBus.on('ai:processing', () => setAiStatus('processing')),
@@ -7967,7 +6336,6 @@ export function MainUI() {
           <DebugSidebar
             inputStatus={inputStatus}
             aiStatus={aiStatus}
-            apiBudget={apiBudget}
             openInputWindow={openInputWindow}
             openAIWindow={openAIWindow}
             openUserNotesWindow={openUserNotesWindow}
