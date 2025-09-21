@@ -398,9 +398,7 @@ export function MainUI() {
         y: position.y,
         width: Math.round(width),
         height: Math.round(height),
-        imageUrl: imageUrl,
-        isMinimized: false,
-        isFullscreen: false
+        imageUrl: imageUrl
       });
     };
     img.src = imageUrl;

@@ -37,6 +37,7 @@ export function ImageWindow({
 	const dragOffsetRef = useRef({ x: 0, y: 0 });
 	const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0, startX: 0, startY: 0 });
 	const resizeDirectionRef = useRef<string>('');
+	const animationFrameRef = useRef<number>(0);
 
 	useEffect(() => {
 		setPosition({ x: initialX, y: initialY });
@@ -45,6 +46,15 @@ export function ImageWindow({
 	useEffect(() => {
 		setSize({ width, height });
 	}, [width, height]);
+
+	// Cleanup animation frames on unmount
+	useEffect(() => {
+		return () => {
+			if (animationFrameRef.current) {
+				cancelAnimationFrame(animationFrameRef.current);
+			}
+		};
+	}, []);
 
 	const onMouseDown = (e: React.MouseEvent) => {
 		onFocus();
@@ -77,9 +87,17 @@ export function ImageWindow({
 
 	const onMouseMove = (e: MouseEvent) => {
 		if (isDraggingRef.current) {
-			setPosition({
-				x: e.clientX - dragOffsetRef.current.x,
-				y: e.clientY - dragOffsetRef.current.y
+			// Cancel previous animation frame to prevent stacking
+			if (animationFrameRef.current) {
+				cancelAnimationFrame(animationFrameRef.current);
+			}
+			
+			// Use requestAnimationFrame for smooth, optimized updates
+			animationFrameRef.current = requestAnimationFrame(() => {
+				setPosition({
+					x: e.clientX - dragOffsetRef.current.x,
+					y: e.clientY - dragOffsetRef.current.y
+				});
 			});
 		}
 	};
@@ -87,6 +105,14 @@ export function ImageWindow({
 	const onResizeMouseMove = (e: MouseEvent) => {
 		if (!isResizingRef.current) return;
 		e.preventDefault();
+		
+		// Cancel previous animation frame to prevent stacking
+		if (animationFrameRef.current) {
+			cancelAnimationFrame(animationFrameRef.current);
+		}
+		
+		// Use requestAnimationFrame for smooth resizing
+		animationFrameRef.current = requestAnimationFrame(() => {
 		const deltaX = e.clientX - resizeStartRef.current.x;
 		const deltaY = e.clientY - resizeStartRef.current.y;
 		
@@ -135,22 +161,33 @@ export function ImageWindow({
 		
 		setSize({ width: newWidth, height: newHeight });
 		setPosition({ x: newX, y: newY });
+		});
 	};
 
 	const onMouseUp = () => {
 		isDraggingRef.current = false;
+		// Cancel any pending animation frame
+		if (animationFrameRef.current) {
+			cancelAnimationFrame(animationFrameRef.current);
+			animationFrameRef.current = 0;
+		}
 		document.removeEventListener('mousemove', onMouseMove);
 		document.removeEventListener('mouseup', onMouseUp);
 	};
 
 	const onResizeMouseUp = () => {
 		isResizingRef.current = false;
+		// Cancel any pending animation frame
+		if (animationFrameRef.current) {
+			cancelAnimationFrame(animationFrameRef.current);
+			animationFrameRef.current = 0;
+		}
 		document.removeEventListener('mousemove', onResizeMouseMove);
 		document.removeEventListener('mouseup', onResizeMouseUp);
 	};
 
 	const getAnimationClasses = () => {
-		const baseClasses = 'absolute bg-black/40 backdrop-blur-2xl rounded-2xl shadow-2xl border border-cyan-400/30 overflow-hidden hover:shadow-cyan-400/20 hover:shadow-2xl hover:bg-black/50 will-change-transform transition-all duration-300';
+		const baseClasses = `absolute bg-black/40 backdrop-blur-2xl rounded-2xl shadow-2xl border border-cyan-400/30 overflow-hidden hover:shadow-cyan-400/20 hover:shadow-2xl hover:bg-black/50 will-change-transform ${isDraggingRef.current || isResizingRef.current ? '' : 'transition-all duration-300'}`;
 		const activeClasses = isActive
 			? 'ring-2 ring-cyan-400/50 shadow-cyan-400/30 border-cyan-400/60 shadow-cyan-400/40'
 			: 'shadow-black/40';

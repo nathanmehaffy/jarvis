@@ -167,10 +167,15 @@ export function ConnectionRenderer({
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-      // If any mouse button is pressed, update connections immediately
+      // If any mouse button is pressed, update connections but throttle it
       if (e.buttons > 0) {
-        // Force immediate update on every mousemove during drag
-        updateConnectionsDirectly();
+        // Throttle updates to improve performance during dragging
+        if (!animationFrameRef.current) {
+          animationFrameRef.current = requestAnimationFrame(() => {
+            updateConnectionsDirectly();
+            animationFrameRef.current = undefined;
+          });
+        }
 
         // Also ensure continuous updates are running
         if (!isDraggingRef.current) {
@@ -195,6 +200,9 @@ export function ConnectionRenderer({
       document.removeEventListener('mousedown', handleMouseDown);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
       stopDragUpdates();
     };
   }, [isVisible]); // Keep dependencies stable
