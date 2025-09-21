@@ -363,6 +363,17 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>((p
           })
         }));
       }),
+      // Simple tasks persistence: create/list
+      eventBus.on('tasks:create', (data: any) => {
+        try {
+          const ls = typeof window !== 'undefined' ? window.localStorage : null;
+          if (!ls) return;
+          const raw = ls.getItem('jarvis.tasks') || '[]';
+          const items = JSON.parse(raw);
+          items.push({ id: data?.id, title: data?.title, due: data?.due || null, notes: data?.notes || '', done: false, createdAt: Date.now() });
+          ls.setItem('jarvis.tasks', JSON.stringify(items));
+        } catch {}
+      }),
       eventBus.on('ui:close_window', (data: any) => {
         if (data?.windowId) {
           closeWindow(data.windowId);

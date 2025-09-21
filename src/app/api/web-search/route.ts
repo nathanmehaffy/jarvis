@@ -31,29 +31,63 @@ export async function POST(request: NextRequest) {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
         const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-        const prompt = `You are a web research assistant. Use Google Search grounding to retrieve results.
+        const prompt = `You are a web research assistant with access to Google Search. Use Google Search grounding to find the most current and relevant results for this query.
+
 Query: "${query}"
 
-Return JSON with this shape exactly:
+Requirements:
+- Use Google Search grounding (not your training data)
+- Find ${resultCount} high-quality, recent results
+- Prefer authoritative sources (news sites, academic, government, established organizations)
+- Return direct URLs to actual articles/pages (not search result URLs)
+
+Return JSON exactly in this format:
 {
   "results": [
-    { "title": string, "url": string, "snippet": string, "content"?: string }
+    { "title": "Exact article title", "url": "https://direct-article-url.com", "snippet": "Brief description of content" }
   ]
-}
-Make sure to include ${resultCount} highly relevant results. If only one truly authoritative result exists, include detailed content in the 'content' field.`;
+}`;
 
-        // API versions differ; try via responses.generate first with tools
+        // Exponential backoff helper
+        const fetchWithBackoff = async (requestFn: () => Promise<any>, maxRetries = 3): Promise<any> => {
+          for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+              return await requestFn();
+            } catch (e: any) {
+              if (e?.message?.includes('429') && attempt < maxRetries - 1) {
+                const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+                console.log(`[API/web-search] Rate limited, retrying in ${delay}ms...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                continue;
+              }
+              throw e;
+            }
+          }
+        };
+
+        // Try Gemini with Google Search grounding and backoff
         let text: string | null = null;
         try {
-          const res: any = await (model as any).generateContent({
-            contents: [{ role: 'user', parts: [{ text: prompt }]}],
-            tools: [{ googleSearchRetrieval: {} }]
+          const res: any = await fetchWithBackoff(async () => {
+            return await (model as any).generateContent({
+              contents: [{ role: 'user', parts: [{ text: prompt }]}],
+              tools: [{ googleSearchRetrieval: {} }],
+              generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
+            });
           });
           text = await res.response.text();
+          console.log('[API/web-search] Gemini grounding successful');
         } catch (e) {
-          console.warn('[API/web-search] Gemini tool-call failed, retrying without tools:', e instanceof Error ? e.message : String(e));
-          const res: any = await (model as any).generateContent(prompt);
-          text = await res.response.text();
+          console.warn('[API/web-search] Gemini grounding failed, trying simple generation:', e instanceof Error ? e.message : String(e));
+          try {
+            const res: any = await fetchWithBackoff(async () => {
+              return await (model as any).generateContent(prompt);
+            });
+            text = await res.response.text();
+          } catch (e2) {
+            console.error('[API/web-search] All Gemini attempts failed:', e2 instanceof Error ? e2.message : String(e2));
+            throw e2;
+          }
         }
         // Try to parse JSON, being tolerant of fenced code blocks
         const tryParse = (raw: string | null) => {

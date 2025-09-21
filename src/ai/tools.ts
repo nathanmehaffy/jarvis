@@ -55,6 +55,95 @@ export const AVAILABLE_TOOLS: Tool[] = [
     }
   },
   {
+    name: 'analyze_image',
+    description: 'Analyzes an image with Gemini vision to describe/ocr. Provide file URL/base64.',
+    parameters: {
+      type: 'object',
+      properties: {
+        imageUrl: { type: 'string', description: 'Public/temporary URL to image' },
+        imageBase64: { type: 'string', description: 'Base64-encoded image (data URL ok)' },
+        mimeType: { type: 'string', description: 'Image MIME type if using base64' },
+        prompt: { type: 'string', description: 'Optional analysis prompt' }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'analyze_pdf',
+    description: 'Parses a PDF and summarizes with Gemini. Provide url or upload.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'PDF URL' },
+        prompt: { type: 'string', description: 'Optional prompt context' }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'create_task',
+    description: 'Creates a task with optional due date/time and notes.',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Task title' },
+        due: { type: 'string', description: 'Due date/time (natural language ok)' },
+        notes: { type: 'string', description: 'Optional details' }
+      },
+      required: ['title']
+    }
+  },
+  {
+    name: 'view_tasks',
+    description: 'Displays current tasks, filtered optionally by status or due.',
+    parameters: {
+      type: 'object',
+      properties: {
+        filter: { type: 'string', description: 'all|due|overdue|completed|pending' }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'set_reminder',
+    description: 'Schedules a notification window at a time or after a delay.',
+    parameters: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: 'Reminder message' },
+        time: { type: 'string', description: 'When to remind (e.g., 2025-09-20T18:45, in 10 minutes)' }
+      },
+      required: ['message', 'time']
+    }
+  },
+  {
+    name: 'get_weather',
+    description: 'Gets weather by city/location.',
+    parameters: {
+      type: 'object',
+      properties: { location: { type: 'string', description: 'City or location name' } },
+      required: ['location']
+    }
+  },
+  {
+    name: 'get_news',
+    description: 'Gets recent news for a topic.',
+    parameters: {
+      type: 'object',
+      properties: { query: { type: 'string', description: 'Topic or search phrase' }, pageSize: { type: 'number', description: 'Number of articles (1-10)' } },
+      required: ['query']
+    }
+  },
+  {
+    name: 'get_stocks',
+    description: 'Gets daily stock time series.',
+    parameters: {
+      type: 'object',
+      properties: { symbol: { type: 'string', description: 'Ticker symbol (e.g., AAPL)' } },
+      required: ['symbol']
+    }
+  },
+  {
     name: 'edit_window',
     description: 'Edits an existing window: rename title, set/append/prepend/clear content.',
     parameters: {

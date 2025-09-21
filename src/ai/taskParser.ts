@@ -1,3 +1,4 @@
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { CerebrasClient } from './cerebrasClient';
 import { AVAILABLE_TOOLS } from './tools';
@@ -245,6 +246,93 @@ export class TaskParser {
         }
 
         return tasks; // Do not create a generic open window
+      }
+    }
+
+    // Image analyze commands
+    if (/(analyze|describe|ocr)\s+(this\s+)?image/i.test(lowerText)) {
+      tasks.push({ id: this.generateTaskId(), tool: 'analyze_image', parameters: {}, description: 'Analyze image' });
+      return tasks;
+    }
+
+    // PDF analyze commands
+    if (/(analyze|summarize)\s+(this\s+)?pdf/i.test(lowerText)) {
+      tasks.push({ id: this.generateTaskId(), tool: 'analyze_pdf', parameters: {}, description: 'Analyze PDF' });
+      return tasks;
+    }
+
+    // Task creation: "add task buy milk due tomorrow"
+    if (/\b(add|create|new)\s+task\b/i.test(lowerText)) {
+      const titleMatch = text.match(/task\s*[:\-]?\s*(.+?)(?:\s+due\s+([^\n]+))?$/i);
+      const title = titleMatch ? (titleMatch[1] || '').trim() : '';
+      const due = titleMatch && titleMatch[2] ? titleMatch[2].trim() : undefined;
+      if (title) {
+        tasks.push({ id: this.generateTaskId(), tool: 'create_task', parameters: { title, due }, description: `Create task: ${title}` });
+        return tasks;
+      }
+    }
+
+    // View tasks
+    if (/(show|view|list)\s+(my\s+)?tasks/i.test(lowerText)) {
+      tasks.push({ id: this.generateTaskId(), tool: 'view_tasks', parameters: {}, description: 'View tasks' });
+      return tasks;
+    }
+
+    // Reminders
+    if (/\b(remind\s+me\b|set\s+reminder\b)/i.test(lowerText)) {
+      const msgMatch = text.match(/remind\s+me\s+(?:to\s+)?(.+?)\s+(?:at|on|in)\s+(.+)$/i) || text.match(/set\s+reminder\s+for\s+(.+?)\s+(?:at|on|in)\s+(.+)$/i);
+      if (msgMatch) {
+        const message = (msgMatch[1] || '').trim();
+        const time = (msgMatch[2] || '').trim();
+        if (message && time) {
+          tasks.push({ id: this.generateTaskId(), tool: 'set_reminder', parameters: { message, time }, description: `Remind: ${message} @ ${time}` });
+          return tasks;
+        }
+      }
+    }
+
+    // Weather
+    if (/\b(weather|forecast)\b/i.test(lowerText)) {
+      // Try multiple patterns to extract location
+      let location = '';
+      const patterns = [
+        /(?:weather|forecast)(?:\s+in|\s+for)?\s+([A-Za-z\s,]+?)(?:\s|$)/i,
+        /(?:in|for)\s+([A-Za-z\s,]+?)(?:\s+weather|\s+forecast|$)/i,
+        /weather.*?(?:in|for)\s+([A-Za-z\s,]+)/i
+      ];
+      
+      for (const pattern of patterns) {
+        const m = text.match(pattern);
+        if (m && m[1]) {
+          location = m[1].trim();
+          break;
+        }
+      }
+      
+      // Default to New York if no location found
+      if (!location) location = 'New York';
+      
+      tasks.push({ id: this.generateTaskId(), tool: 'get_weather', parameters: { location }, description: `Weather in ${location}` });
+      return tasks;
+    }
+
+    // News
+    if (/\b(news|headlines)\b/i.test(lowerText)) {
+      const m = text.match(/(?:about|on|for)\s+(.+)$/i);
+      const query = m ? m[1].trim() : '';
+      if (query) {
+        tasks.push({ id: this.generateTaskId(), tool: 'get_news', parameters: { query, pageSize: 5 }, description: `News: ${query}` });
+        return tasks;
+      }
+    }
+
+    // Stocks
+    if (/\b(stock|stocks|ticker|price)\b/i.test(lowerText)) {
+      const m = text.match(/\b([A-Z]{1,5})\b/);
+      const symbol = m ? m[1] : '';
+      if (symbol) {
+        tasks.push({ id: this.generateTaskId(), tool: 'get_stocks', parameters: { symbol }, description: `Stock: ${symbol}` });
+        return tasks;
       }
     }
 

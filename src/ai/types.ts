@@ -129,6 +129,37 @@ export interface SummarizeArticleParams {
   maxBullets?: number;
 }
 
+export interface AnalyzeImageParams {
+  imageUrl?: string;
+  imageBase64?: string;
+  mimeType?: string;
+  prompt?: string;
+}
+
+export interface AnalyzePdfParams {
+  url?: string;
+  prompt?: string;
+}
+
+export interface CreateTaskParams {
+  title: string;
+  due?: string;
+  notes?: string;
+}
+
+export interface ViewTasksParams {
+  filter?: 'all' | 'due' | 'overdue' | 'completed' | 'pending';
+}
+
+export interface SetReminderParams {
+  message: string;
+  time: string; // ISO or natural language parsed client-side
+}
+
+export interface WeatherParams { location: string }
+export interface NewsParams { query: string; pageSize?: number }
+export interface StocksParams { symbol: string }
+
 export interface SearchResult {
   title: string;
   url: string;

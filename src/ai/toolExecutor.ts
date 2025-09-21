@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Task, OpenWindowParams, CloseWindowParams, WebSearchParams, CreateGroupParams, AssignGroupParams, SummarizeArticleParams, EditWindowParams } from './types';
+import { Task, OpenWindowParams, CloseWindowParams, WebSearchParams, CreateGroupParams, AssignGroupParams, SummarizeArticleParams, EditWindowParams, AnalyzeImageParams, AnalyzePdfParams, CreateTaskParams, ViewTasksParams, SetReminderParams, WeatherParams, NewsParams, StocksParams } from './types';
 import { eventBus } from '@/lib/eventBus';
 import { windowRegistry } from './windowRegistry';
 
@@ -76,6 +76,30 @@ export class ToolExecutor {
           break;
         case 'summarize_article':
           result = await this.executeSummarizeArticle(task);
+          break;
+        case 'analyze_image':
+          result = await this.executeAnalyzeImage(task);
+          break;
+        case 'analyze_pdf':
+          result = await this.executeAnalyzePdf(task);
+          break;
+        case 'create_task':
+          result = await this.executeCreateTask(task);
+          break;
+        case 'view_tasks':
+          result = await this.executeViewTasks(task);
+          break;
+        case 'set_reminder':
+          result = await this.executeSetReminder(task);
+          break;
+        case 'get_weather':
+          result = await this.executeGetWeather(task);
+          break;
+        case 'get_news':
+          result = await this.executeGetNews(task);
+          break;
+        case 'get_stocks':
+          result = await this.executeGetStocks(task);
           break;
         
         default:
@@ -487,6 +511,280 @@ Found ${searchResults.length} result${searchResults.length === 1 ? '' : 's'}`;
     const result = { taskId: task.id, success: true, result: { windowId, url: params.url }, timestamp: Date.now() };
     eventBus.emit('ai:tool_call_completed', { task, tool: 'summarize_article', result });
     return result;
+  }
+
+  private async executeAnalyzeImage(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as AnalyzeImageParams;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'analyze_image', params });
+    try {
+      const resp = await fetch('/api/analyze-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+      });
+      if (!resp.ok) throw new Error(`Image HTTP ${resp.status}`);
+      const data = await resp.json();
+      const windowId = this.generateWindowId();
+      const content = String(data?.result || 'No result');
+      const windowData = {
+        id: windowId,
+        type: 'analysis',
+        title: params.prompt ? `Image Analysis — ${params.prompt}` : 'Image Analysis',
+        content,
+        position: { x: 220, y: 180 },
+        size: { width: 520, height: 380 },
+        context: { title: 'Image Analysis', content, type: 'analysis' },
+        timestamp: Date.now()
+      };
+      eventBus.emit('ui:open_window', windowData);
+      eventBus.emit('window:opened', windowData);
+      const result = { taskId: task.id, success: true, result: { windowId, analysis: content }, timestamp: Date.now() };
+      eventBus.emit('ai:tool_call_completed', { task, tool: 'analyze_image', result });
+      return result;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      eventBus.emit('ai:tool_call_failed', { task, tool: 'analyze_image', error: msg });
+      return { taskId: task.id, success: false, error: msg, timestamp: Date.now() };
+    }
+  }
+
+  private async executeAnalyzePdf(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as AnalyzePdfParams;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'analyze_pdf', params });
+    try {
+      const resp = await fetch('/api/analyze-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+      });
+      if (!resp.ok) throw new Error(`PDF HTTP ${resp.status}`);
+      const data = await resp.json();
+      const windowId = this.generateWindowId();
+      const content = String(data?.summary || 'No summary');
+      const windowData = {
+        id: windowId,
+        type: 'analysis',
+        title: 'PDF Summary',
+        content,
+        position: { x: 240, y: 200 },
+        size: { width: 560, height: 420 },
+        context: { title: 'PDF Summary', content, type: 'analysis' },
+        timestamp: Date.now()
+      };
+      eventBus.emit('ui:open_window', windowData);
+      eventBus.emit('window:opened', windowData);
+      const result = { taskId: task.id, success: true, result: { windowId, summary: content }, timestamp: Date.now() };
+      eventBus.emit('ai:tool_call_completed', { task, tool: 'analyze_pdf', result });
+      return result;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      eventBus.emit('ai:tool_call_failed', { task, tool: 'analyze_pdf', error: msg });
+      return { taskId: task.id, success: false, error: msg, timestamp: Date.now() };
+    }
+  }
+
+  private async executeCreateTask(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as CreateTaskParams;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'create_task', params });
+    if (!params.title) throw new Error('create_task requires title');
+    const id = `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    eventBus.emit('tasks:create', { id, title: params.title, due: params.due || null, notes: params.notes || '' });
+    // Open/refresh a task list window
+    const windowId = this.generateWindowId();
+    const windowData = { id: windowId, type: 'tasks', title: 'Tasks', content: `Added: ${params.title}${params.due ? ` (due ${params.due})` : ''}`, position: { x: 260, y: 220 }, size: { width: 480, height: 360 }, context: { title: 'Tasks', content: '', type: 'tasks' }, timestamp: Date.now() };
+    eventBus.emit('ui:open_window', windowData);
+    eventBus.emit('window:opened', windowData);
+    const result = { taskId: task.id, success: true, result: { id }, timestamp: Date.now() };
+    eventBus.emit('ai:tool_call_completed', { task, tool: 'create_task', result });
+    return result;
+  }
+
+  private async executeViewTasks(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as ViewTasksParams;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'view_tasks', params });
+    // Ask UI to open a tasks window; UI will load from localStorage
+    const windowId = this.generateWindowId();
+    const windowData = { id: windowId, type: 'tasks', title: 'Tasks', content: '', position: { x: 280, y: 240 }, size: { width: 520, height: 380 }, context: { title: 'Tasks', content: '', type: 'tasks', metadata: { filter: params.filter || 'all' } }, timestamp: Date.now() };
+    eventBus.emit('ui:open_window', windowData);
+    eventBus.emit('window:opened', windowData);
+    const result = { taskId: task.id, success: true, result: { windowId }, timestamp: Date.now() };
+    eventBus.emit('ai:tool_call_completed', { task, tool: 'view_tasks', result });
+    return result;
+  }
+
+  private async executeSetReminder(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as SetReminderParams;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'set_reminder', params });
+    if (!params.message || !params.time) throw new Error('set_reminder requires message and time');
+    // Client-side scheduling (in this process) using setTimeout; parse simple phrases
+    const parseDelay = (t: string): number | null => {
+      const m = t.match(/in\s+(\d+)\s*(second|sec|minute|min|hour|hr)s?/i);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        const unit = m[2].toLowerCase();
+        if (unit.startsWith('sec')) return n * 1000;
+        if (unit.startsWith('min')) return n * 60_000;
+        if (unit.startsWith('h')) return n * 60 * 60_000;
+      }
+      const asDate = Date.parse(t);
+      if (!Number.isNaN(asDate)) return Math.max(0, asDate - Date.now());
+      return null;
+    };
+    const delay = parseDelay(params.time);
+    if (delay == null) throw new Error('Could not parse reminder time');
+    setTimeout(() => {
+      try {
+        const windowId = this.generateWindowId();
+        const windowData = { id: windowId, type: 'notification', title: 'Reminder', content: params.message, position: { x: 320, y: 260 }, size: { width: 360, height: 200 }, context: { title: 'Reminder', content: params.message, type: 'notification' }, timestamp: Date.now() };
+        eventBus.emit('ui:open_window', windowData);
+        eventBus.emit('window:opened', windowData);
+      } catch {}
+    }, delay);
+    const result = { taskId: task.id, success: true, result: { scheduledInMs: delay }, timestamp: Date.now() };
+    eventBus.emit('ai:tool_call_completed', { task, tool: 'set_reminder', result });
+    return result;
+  }
+
+  private async executeGetWeather(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as WeatherParams;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'get_weather', params });
+    
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+    const resp = await fetch(`${baseUrl}/api/gemini-data`, { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ type: 'weather', location: params.location }) 
+    });
+    if (!resp.ok) throw new Error(`Weather HTTP ${resp.status}`);
+    
+    const data = await resp.json();
+    const windowId = this.generateWindowId();
+    
+    let content = '';
+    if (data?.data?.current) {
+      const w = data.data;
+      content = `🌤️ Weather for ${w.location}
+
+Current: ${w.current.temperature}°C, ${w.current.condition}
+${w.current.description}
+
+Today: ${w.today.high}°C / ${w.today.low}°C
+${w.today.forecast}
+
+💨 Wind: ${w.current.windSpeed} km/h
+💧 Humidity: ${w.current.humidity}%`;
+    } else {
+      content = data?.data?.rawResponse || 'Weather data unavailable';
+    }
+    
+    const windowData = { 
+      id: windowId, 
+      type: 'weather', 
+      title: `Weather: ${params.location}`, 
+      content, 
+      position: { x: 180, y: 200 }, 
+      size: { width: 420, height: 260 }, 
+      context: { title: `Weather: ${params.location}`, content, type: 'weather' }, 
+      timestamp: Date.now() 
+    };
+    
+    eventBus.emit('ui:open_window', windowData);
+    eventBus.emit('window:opened', windowData);
+    return { taskId: task.id, success: true, result: { windowId }, timestamp: Date.now() };
+  }
+
+  private async executeGetNews(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as NewsParams;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'get_news', params });
+    
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+    const resp = await fetch(`${baseUrl}/api/gemini-data`, { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ type: 'news', query: params.query }) 
+    });
+    if (!resp.ok) throw new Error(`News HTTP ${resp.status}`);
+    
+    const data = await resp.json();
+    const windowId = this.generateWindowId();
+    
+    let content = '';
+    if (data?.data?.articles && Array.isArray(data.data.articles)) {
+      const arts = data.data.articles.slice(0, params.pageSize || 5);
+      const lines = arts.map((a: any, i: number) => 
+        `📰 ${i + 1}. ${a.title}
+📅 ${a.publishedAt} | 📺 ${a.source}
+📝 ${a.summary}
+🔗 ${a.url}`
+      ).join('\n\n');
+      content = `📰 News about "${params.query}"\n\n${lines}`;
+    } else {
+      content = data?.data?.rawResponse || 'No news articles found';
+    }
+    
+    const windowData = { 
+      id: windowId, 
+      type: 'news', 
+      title: `News: ${params.query}`, 
+      content, 
+      position: { x: 200, y: 220 }, 
+      size: { width: 560, height: 420 }, 
+      context: { title: `News: ${params.query}`, content, type: 'news' }, 
+      timestamp: Date.now() 
+    };
+    
+    eventBus.emit('ui:open_window', windowData);
+    eventBus.emit('window:opened', windowData);
+    return { taskId: task.id, success: true, result: { windowId }, timestamp: Date.now() };
+  }
+
+  private async executeGetStocks(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as StocksParams;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'get_stocks', params });
+    
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+    const resp = await fetch(`${baseUrl}/api/gemini-data`, { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ type: 'stocks', symbol: params.symbol }) 
+    });
+    if (!resp.ok) throw new Error(`Stocks HTTP ${resp.status}`);
+    
+    const data = await resp.json();
+    const windowId = this.generateWindowId();
+    
+    let content = '';
+    if (data?.data?.price !== undefined) {
+      const s = data.data;
+      const changeIcon = s.change >= 0 ? '📈' : '📉';
+      const changeColor = s.change >= 0 ? '+' : '';
+      content = `💰 ${s.symbol} Stock Info
+
+Current Price: $${s.price}
+${changeIcon} Change: ${changeColor}${s.change} (${s.changePercent}%)
+
+📊 Day Range: $${s.dayLow} - $${s.dayHigh}
+🏢 Market Cap: ${s.marketCap}
+
+${s.analysis ? `📝 Analysis:\n${s.analysis}` : ''}`;
+    } else {
+      content = data?.data?.rawResponse || 'Stock data unavailable';
+    }
+    
+    const windowData = { 
+      id: windowId, 
+      type: 'stocks', 
+      title: `Stock: ${params.symbol}`, 
+      content, 
+      position: { x: 220, y: 240 }, 
+      size: { width: 520, height: 360 }, 
+      context: { title: `Stock: ${params.symbol}`, content, type: 'stocks' }, 
+      timestamp: Date.now() 
+    };
+    
+    eventBus.emit('ui:open_window', windowData);
+    eventBus.emit('window:opened', windowData);
+    return { taskId: task.id, success: true, result: { windowId }, timestamp: Date.now() };
   }
 
   private async executeOpenSearchResult(task: Task): Promise<ExecutionResult> {
