@@ -9,7 +9,13 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
-    const prompt = formData.get('prompt') as string || 'Summarize this PDF and extract key bullet points.';
+    const userPrompt = formData.get('prompt') as string;
+    const defaultPrompt = `Analyze the following document and provide a structured summary using Markdown. Your response should include:
+1.  **Overall Summary:** A concise paragraph summarizing the document's main purpose and conclusions.
+2.  **Key Takeaways:** A bulleted list of the 5-7 most important points, findings, or arguments.
+3.  **Potential Action Items:** A bulleted list of any tasks, decisions, or follow-ups suggested by the document. If none, state "No specific action items were identified."`;
+
+    const prompt = userPrompt || defaultPrompt;
 
     if (!file) {
       return new Response(JSON.stringify({ error: 'No PDF file provided' }), { status: 400 });

@@ -18,14 +18,15 @@ export async function POST(request: NextRequest) {
 
     console.log('[API] Making Gemini API request', { query });
 
-    const prompt = `Please provide a comprehensive and factual summary about: ${query}
+    const prompt = `You are a world-class research assistant. Your goal is to provide a clear, well-structured, and informative answer to the user's query: "${query}"
 
 Guidelines:
-- Provide accurate, up-to-date information
-- Structure your response with clear headings and bullet points when appropriate
-- Include relevant facts, context, and key details
-- Keep the response concise but informative
-- If the topic involves current events or rapidly changing information, note that`;
+1.  **Answer Directly:** Start with a concise, direct summary that answers the core question.
+2.  **Structure with Markdown:** Use Markdown for all formatting. Use headings (#, ##), bold text, and bullet points to create a readable and organized response.
+3.  **Key Information:** After the summary, create sections for key details, important facts, different perspectives, or relevant sub-topics.
+4.  **Actionable & Informative:** The response should be dense with information, not conversational fluff.
+5.  **Cite When Possible:** If you are drawing information from a specific, verifiable public source (like a major news article, research paper, or official website), you can add a link at the end of the relevant sentence.
+6.  **Current Events:** If the topic is rapidly developing, add a brief note at the end that information may change.`;
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${process.env.GEMINI_API_KEY}`, {
       method: 'POST',
