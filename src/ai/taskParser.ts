@@ -175,7 +175,32 @@ export class TaskParser {
       }
     };
 
+    const detectLocalGroups = (text: string) => {
+      const lower = text.toLowerCase();
+      // create/make category/group <name>
+      let m = lower.match(/(?:create|make|add)\s+(?:a\s+)?(?:category|group)\s+([a-z0-9\-\s]+)/i);
+      if (m && m[1]) {
+        localCalls.push({ tool: 'create_group', parameters: { name: m[1].trim() }, sourceText: m[0] });
+      }
+      // assign (this|active) to <name>
+      m = lower.match(/assign\s+(?:this|window|active)?\s*(?:window)?\s*(?:to|into)\s+([a-z0-9\-\s]+)/i);
+      if (m && m[1]) {
+        localCalls.push({ tool: 'assign_group', parameters: { groupName: m[1].trim(), selector: 'active' }, sourceText: m[0] });
+      }
+      // collapse <name> group/category
+      m = lower.match(/collapse\s+(?:the\s+)?([a-z0-9\-\s]+)\s*(?:group|category)?/i);
+      if (m && m[1]) {
+        localCalls.push({ tool: 'collapse_group', parameters: { groupName: m[1].trim() }, sourceText: m[0] });
+      }
+      // expand <name> group/category
+      m = lower.match(/expand\s+(?:the\s+)?([a-z0-9\-\s]+)\s*(?:group|category)?/i);
+      if (m && m[1]) {
+        localCalls.push({ tool: 'expand_group', parameters: { groupName: m[1].trim() }, sourceText: m[0] });
+      }
+    };
+
     detectLocalEdits(fullTranscript);
+    detectLocalGroups(fullTranscript);
 
     // Deduplicate against actionHistory and llm calls
     const seenKeys = new Set<string>(

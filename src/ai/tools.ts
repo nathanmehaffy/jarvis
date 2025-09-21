@@ -135,6 +135,53 @@ export const AVAILABLE_TOOLS: Tool[] = [
       },
       required: ['query']
     }
+  },
+  {
+    name: 'create_group',
+    description: 'Create a new category/group by name. Use when the user says “create/make a category/group <name>”.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Category/group name' },
+        color: { type: 'string', description: 'Optional hex color like #3B82F6' }
+      },
+      required: ['name']
+    }
+  },
+  {
+    name: 'assign_group',
+    description: 'Assign a window to a category/group. Use when the user says “assign this/window <id>/<title> to <group>”.',
+    parameters: {
+      type: 'object',
+      properties: {
+        groupName: { type: 'string', description: 'Target category/group name' },
+        windowId: { type: 'string', description: 'Optional explicit window id' },
+        selector: { type: 'string', description: 'Selector when no id provided (newest/latest/active/all)' }
+      },
+      required: ['groupName']
+    }
+  },
+  {
+    name: 'collapse_group',
+    description: 'Collapse a category/group into a single summary window.',
+    parameters: {
+      type: 'object',
+      properties: {
+        groupName: { type: 'string', description: 'Category/group to collapse' }
+      },
+      required: ['groupName']
+    }
+  },
+  {
+    name: 'expand_group',
+    description: 'Expand a previously-collapsed category/group, restoring its windows.',
+    parameters: {
+      type: 'object',
+      properties: {
+        groupName: { type: 'string', description: 'Category/group to expand' }
+      },
+      required: ['groupName']
+    }
   }
 ];
 

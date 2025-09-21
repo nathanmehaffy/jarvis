@@ -110,6 +110,18 @@ export class ToolExecutor {
         case 'start_adaptive_quiz':
           result = await this.executeStartAdaptiveQuiz(task);
           break;
+        case 'create_group':
+          result = await this.executeCreateGroup(task);
+          break;
+        case 'assign_group':
+          result = await this.executeAssignGroup(task, uiContext);
+          break;
+        case 'collapse_group':
+          result = await this.executeCollapseGroup(task);
+          break;
+        case 'expand_group':
+          result = await this.executeExpandGroup(task);
+          break;
         default:
           console.error('⚠️ [ToolExecutor] Unknown tool requested', { tool: task.tool });
           throw new Error(`Unknown tool: ${task.tool}`);
@@ -629,6 +641,53 @@ export class ToolExecutor {
     };
     eventBus.emit('ai:tool_call_completed', { task, tool: 'start_adaptive_quiz', result });
     return result;
+  }
+
+  private async executeCreateGroup(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as any;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'create_group', params });
+    const name = String(params?.name || '').trim();
+    const color = typeof params?.color === 'string' ? params.color : undefined;
+    if (!name) throw new Error('create_group requires name');
+    eventBus.emit('window:create_group', { name, color });
+    return { taskId: task.id, success: true, result: { name, color }, timestamp: Date.now() };
+  }
+
+  private async executeAssignGroup(task: Task, uiContext?: any): Promise<ExecutionResult> {
+    const params = task.parameters as any;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'assign_group', params });
+    const groupName = String(params?.groupName || '').trim();
+    if (!groupName) throw new Error('assign_group requires groupName');
+
+    let windowId: string | undefined = typeof params?.windowId === 'string' ? params.windowId : undefined;
+    const selector = typeof params?.selector === 'string' ? params.selector : 'active';
+    if (!windowId) {
+      const windows: Array<{ id: string; zIndex?: number }> = Array.isArray(uiContext?.windows) ? uiContext.windows : [];
+      if (selector === 'all') {
+        windows.forEach(w => eventBus.emit('window:assign_group', { windowId: w.id, groupName }));
+        return { taskId: task.id, success: true, result: { groupName, assigned: windows.length }, timestamp: Date.now() };
+      }
+      windowId = (windows.slice().sort((a, b) => (b.zIndex ?? 0) - (a.zIndex ?? 0))[0] || {}).id;
+    }
+    if (!windowId) throw new Error('assign_group could not resolve a window');
+    eventBus.emit('window:assign_group', { windowId, groupName });
+    return { taskId: task.id, success: true, result: { groupName, windowId }, timestamp: Date.now() };
+  }
+
+  private async executeCollapseGroup(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as any;
+    const groupName = String(params?.groupName || '').trim();
+    if (!groupName) throw new Error('collapse_group requires groupName');
+    eventBus.emit('window:collapse_group', { groupName });
+    return { taskId: task.id, success: true, result: { groupName }, timestamp: Date.now() };
+  }
+
+  private async executeExpandGroup(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as any;
+    const groupName = String(params?.groupName || '').trim();
+    if (!groupName) throw new Error('expand_group requires groupName');
+    eventBus.emit('window:expand_group', { groupName });
+    return { taskId: task.id, success: true, result: { groupName }, timestamp: Date.now() };
   }
 
 

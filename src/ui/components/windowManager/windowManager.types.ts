@@ -18,6 +18,8 @@ export interface WindowData {
   animationState?: 'opening' | 'closing' | 'none';
   keywords?: string[];
   contentHash?: string;
+  group?: string;
+  groupColor?: string;
 }
 
 export interface WindowManagerState {
