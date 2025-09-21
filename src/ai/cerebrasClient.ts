@@ -3,7 +3,7 @@ import { CerebrasRequest, CerebrasResponse, Tool, CerebrasTool } from './types';
 
 export class CerebrasClient {
   // Client no longer holds API key; all calls go through server route
-  constructor(_apiKey?: string) {}
+  constructor() {}
 
   async createChatCompletion(request: CerebrasRequest): Promise<CerebrasResponse> {
     // Always call our internal API route which adds auth server-side

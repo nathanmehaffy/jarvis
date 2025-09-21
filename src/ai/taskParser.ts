@@ -1,13 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { CerebrasClient } from './cerebrasClient';
 import { AVAILABLE_TOOLS } from './tools';
-import { Task } from './types';
 
 export class TaskParser {
   private cerebrasClient: CerebrasClient;
 
-  constructor(apiKey?: string) {
-    this.cerebrasClient = new CerebrasClient(apiKey);
+  constructor() {
+    this.cerebrasClient = new CerebrasClient();
   }
 
   async parseTextToTasks(input: { transcript: string; actionHistory: Array<{ tool: string; parameters: any; sourceText: string }>; uiContext: any }): Promise<{ new_tool_calls: Array<{ tool: string; parameters: any; sourceText: string }> }> {
@@ -108,7 +107,6 @@ export class TaskParser {
     const localCalls: Array<{ tool: string; parameters: any; sourceText: string }> = [];
 
     const detectLocalEdits = (text: string) => {
-      const t = text.toLowerCase();
       const raw = text;
 
       const pushCall = (params: any, source: string) => {

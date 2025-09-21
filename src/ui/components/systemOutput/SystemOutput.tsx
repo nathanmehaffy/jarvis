@@ -6,8 +6,9 @@ import { SystemOutputState, SystemOutputProps } from './systemOutput.types';
 import { MarkdownText } from '../markdownText';
 
 export function SystemOutput({
-  placeholder = 'System messages will appear here...'
-}: SystemOutputProps) {
+  placeholder = 'System messages will appear here...',
+  content
+}: SystemOutputProps & { content?: string }) {
   const [notes, setNotes] = useState<SystemOutputState>({
     content: '',
     lastModified: new Date()

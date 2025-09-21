@@ -671,7 +671,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
       }),
       // Generic window update: supports title/content changes by id or fuzzy title match
       eventBus.on('ui:update_window', (data: { windowId?: string; titleMatch?: string; newTitle?: string; newContent?: string }) => {
-        const { windowId, titleMatch, newTitle, newContent } = data || {} as any;
+        const { windowId, titleMatch, newTitle, newContent } = data || {};
         setState(prev => ({
           ...prev,
           windows: prev.windows.map(w => {
