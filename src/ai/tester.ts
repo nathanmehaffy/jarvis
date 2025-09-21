@@ -95,7 +95,7 @@ export class AITester {
       
       // Edge cases
       'show me a "Project Ideas" sticky note',
-      'close all windows', // This should fail gracefully
+      'close all windows', // Should close all open windows
       '', // Empty command
       
       // Natural language variations

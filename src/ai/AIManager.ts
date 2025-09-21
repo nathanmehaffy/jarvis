@@ -110,17 +110,6 @@ export class AIManager {
     } catch {}
   }
 
-  processRequest(request: unknown): void {
-    if (!this.worker) {
-      console.warn('AI worker not initialized');
-      return;
-    }
-
-    this.worker.postMessage({
-      type: 'PROCESS_AI_REQUEST',
-      data: { ...(request as object), uiContext: this.getSerializableUIContext() }
-    });
-  }
 
   processTextCommand(text: string): void {
     if (!this.worker) {
@@ -146,17 +135,6 @@ export class AIManager {
     });
   }
 
-  analyzeData(data: unknown): void {
-    if (!this.worker) {
-      console.warn('AI worker not initialized');
-      return;
-    }
-
-    this.worker.postMessage({
-      type: 'ANALYZE_DATA',
-      data: data as object
-    });
-  }
 
   destroy(): void {
     if (this.worker) {

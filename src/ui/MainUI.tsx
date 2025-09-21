@@ -21,7 +21,6 @@ export function MainUI() {
   const windowManagerRef = useRef<WindowManagerRef>(null);
   const [inputStatus, setInputStatus] = useState<'idle' | 'listening' | 'processing' | 'error'>('idle');
   const [aiStatus, setAiStatus] = useState<'idle' | 'processing' | 'ready' | 'error'>('idle');
-  const [apiBudget, setApiBudget] = useState<{ used: number; nextMs: number | null }>({ used: 0, nextMs: null });
   const [openWindows, setOpenWindows] = useState<Set<string>>(new Set());
   const [minimizedWindows, setMinimizedWindows] = useState<Set<string>>(new Set());
   const [isImageDropMinimized, setIsImageDropMinimized] = useState(false);
@@ -38,7 +37,6 @@ export function MainUI() {
       eventBus.on('speech:ended', () => setInputStatus('idle')),
       eventBus.on('input:voice_debug', (d: { status?: string; apiCallsUsedLastMinute?: number; nextCallInMs?: number }) => {
         setInputStatus((d?.status as 'idle' | 'listening' | 'processing' | 'error') || 'idle');
-        setApiBudget({ used: d?.apiCallsUsedLastMinute ?? 0, nextMs: d?.nextCallInMs ?? null });
       }),
       eventBus.on('ai:initialized', () => setAiStatus('ready')),
       eventBus.on('ai:processing', () => setAiStatus('processing')),
@@ -492,7 +490,6 @@ export function MainUI() {
           <DebugSidebar
             inputStatus={inputStatus}
             aiStatus={aiStatus}
-            apiBudget={apiBudget}
             openInputWindow={openInputWindow}
             openAIWindow={openAIWindow}
             openUserNotesWindow={openUserNotesWindow}

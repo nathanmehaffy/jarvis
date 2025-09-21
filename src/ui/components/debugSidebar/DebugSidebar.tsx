@@ -10,7 +10,6 @@ type OpenSidebar = 'ui' | 'input' | 'ai' | null;
 interface DebugSidebarProps {
   inputStatus: 'idle' | 'listening' | 'processing' | 'error';
   aiStatus: 'idle' | 'processing' | 'ready' | 'error';
-  apiBudget: { used: number; nextMs: number | null };
   openInputWindow: () => void;
   openAIWindow: () => void;
   openUserNotesWindow: () => void;
@@ -21,18 +20,17 @@ interface DebugSidebarProps {
   openPreloadedImageWindow: () => void;
 }
 
-export function DebugSidebar({ 
-  inputStatus, 
-  aiStatus, 
-  apiBudget, 
-  openInputWindow, 
-  openAIWindow, 
-  openUserNotesWindow, 
-  openSystemOutputWindow, 
-  openGraphWindow, 
-  openBarGraphWindow, 
-  openPieChartWindow, 
-  openPreloadedImageWindow 
+export function DebugSidebar({
+  inputStatus,
+  aiStatus,
+  openInputWindow,
+  openAIWindow,
+  openUserNotesWindow,
+  openSystemOutputWindow,
+  openGraphWindow,
+  openBarGraphWindow,
+  openPieChartWindow,
+  openPreloadedImageWindow
 }: DebugSidebarProps) {
   const [openSidebar, setOpenSidebar] = useState<OpenSidebar>(null);
   const [taskQueue, setTaskQueue] = useState<Task[]>([]);
@@ -133,8 +131,6 @@ export function DebugSidebar({
           <h2 className="text-lg font-bold">Input State</h2>
           <div className="mt-2 space-y-2 text-sm">
             <div className="flex justify-between"><span>Status:</span> <span className={`px-2 py-0.5 rounded ${inputStatus === 'listening' ? 'bg-red-500' : inputStatus === 'processing' ? 'bg-yellow-500' : inputStatus === 'error' ? 'bg-rose-600' : 'bg-gray-500'}`}>{inputStatus}</span></div>
-            <div className="flex justify-between"><span>API Calls/min:</span> <span>{apiBudget.used}</span></div>
-            {apiBudget.nextMs != null && <div className="flex justify-between"><span>Next Call In:</span> <span>{Math.max(0, Math.round(apiBudget.nextMs/1000))}s</span></div>}
           </div>
 
           <div className="mt-4">

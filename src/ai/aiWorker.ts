@@ -55,9 +55,6 @@ self.addEventListener('message', (event) => {
     case 'SET_UI_CONTEXT':
       try { state.uiContext = data || {}; } catch {}
       break;
-    case 'PROCESS_AI_REQUEST':
-      processAIRequest(data);
-      break;
     
     case 'PROCESS_TEXT_COMMAND':
       processTextCommand(data);
@@ -67,9 +64,6 @@ self.addEventListener('message', (event) => {
       generateResponse(data);
       break;
     
-    case 'ANALYZE_DATA':
-      analyzeData(data);
-      break;
     
     default:
       console.warn(`Unknown AI worker message type: ${type}`);
@@ -150,55 +144,6 @@ async function processTextCommand(data: any) {
   }
 }
 
-async function processAIRequest(request: any) {
-  try {
-    // If pre-parsed tasks are provided, execute them directly
-    if (Array.isArray(request?.tasks)) {
-      const executionResults = await toolExecutor.executeTasks(request.tasks);
-      self.postMessage({
-        type: 'AI_TASKS_EXECUTED',
-        data: {
-          id: request.id || generateId(),
-          success: true,
-          tasks: request.tasks,
-          executionResults,
-          timestamp: Date.now()
-        }
-      });
-      return;
-    }
-
-    // Legacy support for existing AI request format
-    // Try to extract text from various possible fields
-    const text = request.text || request.command || request.input || request.prompt?.text;
-    
-    if (text) {
-      // Delegate to the new text command processor
-      await processTextCommand(text);
-      return;
-    }
-    
-    // Fallback to old behavior for non-text requests
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const response = {
-      id: request.id || generateId(),
-      processed: true,
-      timestamp: Date.now(),
-      request
-    };
-    
-    self.postMessage({
-      type: 'AI_REQUEST_PROCESSED',
-      data: response
-    });
-  } catch (error) {
-    self.postMessage({
-      type: 'AI_ERROR',
-      data: { error: error instanceof Error ? error.message : String(error), request }
-    });
-  }
-}
 
 async function generateResponse(prompt: any) {
   try {
@@ -233,29 +178,6 @@ async function generateResponse(prompt: any) {
   }
 }
 
-async function analyzeData(data: any) {
-  try {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    const analysis = {
-      id: generateId(),
-      analysis: `Analysis of data: ${JSON.stringify(data)}`,
-      confidence: Math.random(),
-      timestamp: Date.now(),
-      data
-    };
-    
-    self.postMessage({
-      type: 'AI_ANALYSIS_COMPLETE',
-      data: analysis
-    });
-  } catch (error) {
-    self.postMessage({
-      type: 'AI_ERROR',
-      data: { error: error instanceof Error ? error.message : String(error), data }
-    });
-  }
-}
 
 function generateId(): string {
   return Math.random().toString(36).substr(2, 9);

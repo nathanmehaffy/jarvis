@@ -16,21 +16,17 @@ export function VoiceTaskListener() {
   const [buffer, setBuffer] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [lastError, setLastError] = useState('');
-  const [apiCallTimestamps, setApiCallTimestamps] = useState<number[]>([]);
-  const [nextCallAt, setNextCallAt] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
 
   const bufferRef = useRef(buffer);
-  const apiCallTimestampsRef = useRef(apiCallTimestamps);
   const processingRef = useRef(false);
   const scheduledTimeoutRef = useRef<number | null>(null);
   const scheduledForRef = useRef<number | null>(null);
   const callStartBufferLengthRef = useRef(0);
   const lastBufferAppendAtRef = useRef<number>(0);
   
-  const recentTaskTextsRef = useRef<Map<string, number>>(new Map());
   const latestFullTextRef = useRef<string>('');
   const streamTimerRef = useRef<number | null>(null);
   const lastStreamCallAtRef = useRef<number>(0);
@@ -44,13 +40,8 @@ export function VoiceTaskListener() {
   const SILENCE_CONFIRM_MS = 1000; // wait after last final segment to coalesce phrases
   const ENABLE_STREAMING = false; // disable streaming task emission to avoid partial-command actions
 
-  const cleanOld = useCallback((timestamps: number[]): number[] => {
-    const cutoff = Date.now() - 60000;
-    return timestamps.filter(t => t > cutoff);
-  }, []);
 
   useEffect(() => { bufferRef.current = buffer; }, [buffer]);
-  useEffect(() => { apiCallTimestampsRef.current = apiCallTimestamps; }, [apiCallTimestamps]);
 
   const { isListening, isSupported } = useSpeechTranscription({
     autoStart: true,
@@ -85,18 +76,17 @@ export function VoiceTaskListener() {
 
   // Compute and emit debug info whenever core state changes
   useEffect(() => {
-    const recent = cleanOld(apiCallTimestampsRef.current);
     eventBus.emit('input:voice_debug', {
       status: !isSupported ? 'error' : processingRef.current ? 'processing' : isListening ? 'listening' : 'idle',
       bufferLength: bufferRef.current.length,
       bufferText: bufferRef.current,
-      apiCallsUsedLastMinute: recent.length,
-      nextCallInMs: nextCallAt ? Math.max(0, nextCallAt - Date.now()) : null,
+      apiCallsUsedLastMinute: 0, // No longer tracking API calls
+      nextCallInMs: null, // No longer rate limiting
       lastError: lastError || null,
       isOnline,
       isSupported
     });
-  }, [buffer, apiCallTimestamps, nextCallAt, lastError, isOnline, isListening, isSupported, cleanOld]);
+  }, [buffer, lastError, isOnline, isListening, isSupported]);
 
   // Online/offline monitoring
   useEffect(() => {
@@ -158,11 +148,9 @@ export function VoiceTaskListener() {
     }
     const runAt = Date.now() + delayMs;
     scheduledForRef.current = runAt;
-    setNextCallAt(runAt);
     scheduledTimeoutRef.current = window.setTimeout(() => {
       scheduledTimeoutRef.current = null;
       scheduledForRef.current = null;
-      setNextCallAt(null);
       attemptProcessing('final');
     }, delayMs);
   }, []);
@@ -172,15 +160,8 @@ export function VoiceTaskListener() {
     if (processingRef.current) return;
     if (!bufferRef.current) return;
 
-    const now = Date.now();
-    const recent = cleanOld(apiCallTimestampsRef.current);
-    const capWait = recent.length >= 30 ? (60000 - (now - recent[0])) : 0;
-    if (capWait > 0) {
-      scheduleTimer(capWait);
-    } else {
-      attemptProcessing('final');
-    }
-  }, [MIN_DEBOUNCE_MS, cleanOld, isOnline, isSupported, scheduleTimer]);
+    attemptProcessing('final');
+  }, [isOnline, isSupported]);
 
   const scheduleStreamProcessing = useCallback(() => {
     if (!isSupported || !isOnline) return;
@@ -217,25 +198,8 @@ export function VoiceTaskListener() {
       if (!hasText) return;
     }
 
-    const now = Date.now();
-    const recent = cleanOld(apiCallTimestampsRef.current);
-
-    if (recent.length >= 30) {
-      const wait = 60000 - (now - recent[0]);
-      if (wait > 0) {
-        if (mode === 'final') {
-          scheduleTimer(wait);
-        } else {
-          // stream mode: reschedule another attempt after cap clears
-          if (streamTimerRef.current !== null) clearTimeout(streamTimerRef.current);
-          streamTimerRef.current = window.setTimeout(() => attemptProcessing('stream'), wait);
-        }
-      }
-      return;
-    }
-
     processNow(mode);
-  }, [cleanOld, isOnline, isSupported, scheduleTimer]);
+  }, [isOnline, isSupported]);
 
   const processNow = useCallback((mode: 'final' | 'stream' = 'final') => {
     const currentBuffer = bufferRef.current;
@@ -295,7 +259,7 @@ export function VoiceTaskListener() {
       processingRef.current = false;
       setStatus(isListening ? 'listening' : 'idle');
     }
-  }, [isListening, cleanOld, scheduleProcessing]);
+  }, [isListening]);
 
   // Render nothing; this component orchestrates voice -> tasks
   return null;

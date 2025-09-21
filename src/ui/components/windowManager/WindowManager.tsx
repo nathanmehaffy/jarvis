@@ -4,7 +4,6 @@ import { useEffect, useState, forwardRef, useImperativeHandle, useRef } from 're
 import { Window } from '../window';
 import { WindowData, WindowManagerState } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
-// import { contentSimilarityAnalyzer } from '@/lib/contentSimilarity';
 
 interface WindowManagerProps {
   children: React.ReactNode;
@@ -280,77 +279,6 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
     // logs muted per decision
   };
 
-  // const analyzeWindowSimilarities = useCallback((windows: WindowData[], currentState: WindowManagerState) => {
-  //   console.log('🔍 Starting similarity analysis...');
-  //   eventBus.emit('system:output', { text: '🔍 Starting similarity analysis...\n' });
-
-  //   const windowContents = windows
-  //     .filter(w => w.isOpen && !w.isMinimized)
-  //     .map(w => contentSimilarityAnalyzer.processWindowContent(
-  //       w.id,
-  //       w.title,
-  //       w.content || ''
-  //     ));
-
-  //   const windowsInfo = windowContents.map(w => ({
-  //     id: w.id,
-  //     title: w.title,
-  //     content: w.content.slice(0, 50) + '...',
-  //     keywords: w.keywords,
-  //     wordCount: w.wordCount
-  //   }));
-
-  //   console.log('📊 Window contents processed:', windowsInfo);
-  //   eventBus.emit('system:output', {
-  //     text: `📊 Window contents processed:\n${JSON.stringify(windowsInfo, null, 2)}\n\n`
-  //   });
-
-  //   const similarities = contentSimilarityAnalyzer.analyzeSimilarities(windowContents);
-  //   console.log('🔗 Found similarities:', similarities);
-  //   eventBus.emit('system:output', {
-  //     text: `🔗 Found similarities:\n${JSON.stringify(similarities, null, 2)}\n\n`
-  //   });
-
-  //   const connections: Connection[] = similarities
-  //     .map(sim => ({
-  //       windowId1: sim.windowId1,
-  //       windowId2: sim.windowId2,
-  //       score: sim.score,
-  //       keywords: sim.keywords
-  //     }))
-  //     .filter(conn => {
-  //       const connectionId = getConnectionId(conn.windowId1, conn.windowId2);
-  //       // Filter out deleted connections - keep them in state but set score to 0
-  //       if (currentState.deletedConnections.has(connectionId)) {
-  //         return false; // Don't include deleted connections in the active list
-  //       }
-  //       return true;
-  //     });
-
-  //   // Add deleted connections back with 0% score for display
-  //   const deletedConnectionsToShow: Connection[] = [];
-  //   currentState.deletedConnections.forEach(deletedId => {
-  //     const [windowId1, windowId2] = deletedId.split('--');
-  //     // Only add if both windows still exist
-  //     if (windows.some(w => w.id === windowId1) && windows.some(w => w.id === windowId2)) {
-  //       deletedConnectionsToShow.push({
-  //         windowId1,
-  //         windowId2,
-  //         score: 0,
-  //         keywords: []
-  //       });
-  //     }
-  //   });
-
-  //   const allConnections = [...connections, ...deletedConnectionsToShow];
-
-  //   console.log('✅ Created connections:', allConnections);
-  //   eventBus.emit('system:output', {
-  //     text: `✅ Created connections:\n${JSON.stringify(allConnections, null, 2)}\n\n`
-  //   });
-
-  //   setState(prev => ({ ...prev, connections: allConnections }));
-  // }, []);
 
 
   const addNaturalScatter = (position: { x: number; y: number }, width: number, height: number): { x: number; y: number } => {
@@ -423,10 +351,6 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         }));
       }, 80);
 
-      // Trigger similarity analysis after state is updated
-      // setTimeout(() => {
-      //   analyzeWindowSimilarities(newState.windows, newState);
-      // }, 100);
 
       return newState;
     });
@@ -623,13 +547,6 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
           )
         }));
 
-        // Re-analyze similarities after a short delay to debounce rapid changes
-        // setTimeout(() => {
-        //   setState(currentState => {
-        //     analyzeWindowSimilarities(currentState.windows, currentState);
-        //     return currentState;
-        //   });
-        // }, 500);
       })
     ];
     return () => { unsubs.forEach((u) => u()); };
