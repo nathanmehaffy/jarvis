@@ -36,10 +36,10 @@ export function AnimatedBackground() {
         particles.push({
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
-          vx: (Math.random() - 0.5) * 0.5,
-          vy: (Math.random() - 0.5) * 0.5,
+          vx: (Math.random() - 0.5) * 0.2,
+          vy: (Math.random() - 0.5) * 0.2,
           size: Math.random() * 2 + 1,
-          opacity: Math.random() * 0.5 + 0.1
+          opacity: Math.random() * 0.2 + 0.05
         });
       }
 
@@ -82,7 +82,7 @@ export function AnimatedBackground() {
             ctx.beginPath();
             ctx.moveTo(particle.x, particle.y);
             ctx.lineTo(otherParticle.x, otherParticle.y);
-            ctx.strokeStyle = `rgba(255, 255, 255, ${0.1 * (1 - distance / 100)})`;
+            ctx.strokeStyle = `rgba(255, 255, 255, ${0.04 * (1 - distance / 100)})`;
             ctx.lineWidth = 1;
             ctx.stroke();
           }

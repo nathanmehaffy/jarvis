@@ -661,22 +661,46 @@ export function MainUI() {
   };
 
   const testBottomChatSystem = () => {
-    // Test the single message conversational system with extended durations
+    // Test conversational responses (questions/greetings only - no action confirmations)
     eventBus.emit('ai:ai_conversational_response', {
-      response: 'Hello! Conversational responses now stay for 15 seconds - plenty of time to read! 🤖'
+      response: 'Hello! I only appear for direct questions and greetings now. 🤖'
     });
 
     setTimeout(() => {
       eventBus.emit('ai:ai_conversational_response', {
-        response: 'Perfect! Extended durations make it much easier to read longer responses without rushing. ✨'
+        response: 'Actions like opening windows happen silently - no popup spam! ✨'
       });
     }, 4000);
 
     setTimeout(() => {
       eventBus.emit('ai:ai_conversational_response', {
-        response: 'Final test - this message will stay visible for a full 15 seconds. Great for complex responses! 📖⏰'
+        response: 'Much cleaner experience - popups only when you need a direct response! 🎯'
       });
     }, 8000);
+  };
+
+  const testChatPopupRefined = () => {
+    // Test showing action vs question difference
+    eventBus.emit('system:output', {
+      text: '🧪 **Testing Refined Chat Popup Behavior**\n\n1. Opening a window (no popup - action speaks for itself)\n2. Then asking a question (popup appears for direct response)'
+    });
+
+    // Simulate opening a window (no popup)
+    setTimeout(() => {
+      eventBus.emit('ui:open_window', {
+        id: 'test-refined',
+        title: '🔇 Silent Action',
+        content: 'This window opened without a popup confirmation!',
+        size: { width: 400, height: 300 }
+      });
+    }, 1000);
+
+    // Then simulate a direct question (shows popup)
+    setTimeout(() => {
+      eventBus.emit('ai:ai_conversational_response', {
+        response: 'This popup appears because you asked me a direct question! 💬'
+      });
+    }, 3000);
   };
 
   // Category Organizer functions

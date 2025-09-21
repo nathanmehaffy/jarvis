@@ -20,10 +20,36 @@ export function BottomChatNotifications() {
       setCurrentNotification(notification);
     };
 
+    const handleResponseNotify = (data: { message: string; duration?: number }) => {
+      const notification: ChatNotification = {
+        id: Date.now().toString(),
+        text: data.message,
+        sender: 'ai',
+        timestamp: Date.now(),
+        duration: data.duration || 3000
+      };
+      setCurrentNotification(notification);
+    };
+
+    const handleConversationalResponse = (data: { response: string; originalText?: string }) => {
+      const notification: ChatNotification = {
+        id: Date.now().toString(),
+        text: data.response,
+        sender: 'ai',
+        timestamp: Date.now(),
+        duration: 15000
+      };
+      setCurrentNotification(notification);
+    };
+
     eventBus.on('chat-notification', handleNotification);
+    eventBus.on('ai:response_notify', handleResponseNotify);
+    eventBus.on('ai:ai_conversational_response', handleConversationalResponse);
 
     return () => {
       eventBus.off('chat-notification', handleNotification);
+      eventBus.off('ai:response_notify', handleResponseNotify);
+      eventBus.off('ai:ai_conversational_response', handleConversationalResponse);
     };
   }, []);
 

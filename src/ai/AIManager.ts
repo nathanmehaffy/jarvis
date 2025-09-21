@@ -88,27 +88,15 @@ export class AIManager {
         }
         eventBus.emit(`ai:${type.toLowerCase()}`, data);
 
-        // Emit notifications for various AI events - all handled by bottom chat now
-        if (type === 'AI_RESPONSE_GENERATED') {
-          eventBus.emit('ai:response_notify', {
-            message: `Jarvis: ${data.response || 'Response generated'}`,
-            duration: 12000
-          });
-        } else if (type === 'TEXT_COMMAND_PROCESSED') {
-          const tasksCount = data.tasks?.length || 0;
-          if (tasksCount > 0) {
-            eventBus.emit('ai:response_notify', {
-              message: `✅ Completed ${tasksCount} task${tasksCount === 1 ? '' : 's'}`,
-              duration: 10000
-            });
-          }
-        } else if (type === 'AI_CONVERSATIONAL_RESPONSE') {
-          // Emit notification for conversational responses - now handled by bottom chat
-          eventBus.emit('ai:response_notify', {
-            message: data.response || 'Jarvis responded',
-            duration: 15000
+        // Handle AI_CONVERSATIONAL_RESPONSE events (only these should trigger popups)
+        if (type === 'AI_CONVERSATIONAL_RESPONSE') {
+          // Only show popup for conversational responses (direct questions/greetings)
+          eventBus.emit('ai:ai_conversational_response', {
+            response: data.response || 'Jarvis responded'
           });
         }
+        // Remove automatic notifications for AI_RESPONSE_GENERATED and TEXT_COMMAND_PROCESSED
+        // Actions should speak for themselves without confirmation popups
       };
 
       this.worker.onerror = (error) => {

@@ -33,11 +33,12 @@ export class TaskParser {
 
 ABSOLUTE OUTPUT CONTRACT (NO EXCEPTIONS):
 - Respond with ONE valid JSON OBJECT only, with EXACTLY this top-level shape:
-  { "new_tool_calls": [ { "tool": string, "parameters": object, "sourceText": string } ] }
-- Do NOT include explanations, prose, markdown, code fences, logging, comments, or any other keys.
+  { "new_tool_calls": [ { "tool": string, "parameters": object, "sourceText": string } ], "conversational_response": string }
+- Do NOT include explanations, prose, markdown, code fences, logging, comments, or any other keys beyond these two.
 - If there are no actions, return exactly: { "new_tool_calls": [] }
 - Each array item MUST include all three keys: "tool" (string), "parameters" (object), "sourceText" (string).
 - Keys must use double quotes. Do NOT use single quotes. Do NOT trail commas. Ensure strict JSON.
+- OPTIONAL: Include "conversational_response" ONLY for direct questions, greetings, or when no tool calls are possible. Do NOT use for action confirmations - actions speak for themselves. This will appear as a temporary chat popup at the bottom of the screen.
 
 Available tools (reference only): provided in user payload under "availableTools"
 
@@ -61,8 +62,8 @@ Output: {"new_tool_calls":[{"tool":"search","parameters":{"query":"cute cats"},"
 User: Summarize this article: https://example.com
 Output: {"new_tool_calls":[{"tool":"summarize_article","parameters":{"url":"https://example.com"},"sourceText":"Summarize this article: https://example.com"}]}
 
-User: Remind me to buy milk tomorrow
-Output: {"new_tool_calls":[{"tool":"create_task","parameters":{"title":"Buy milk","due":"tomorrow"},"sourceText":"Remind me to buy milk tomorrow"}]}
+User: How are you doing?
+Output: {"new_tool_calls":[],"conversational_response":"I'm doing great! Ready to help you with any tasks or questions you might have."}
 
 User: Close the notes window (UI context has window with title 'Notes')
 Output: {"new_tool_calls":[{"tool":"close_window","parameters":{"windowId":"notes-window-id"},"sourceText":"Close the notes window"}]}
