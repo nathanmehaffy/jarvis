@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Task, OpenWindowParams, CloseWindowParams, WebSearchParams, CreateGroupParams, AssignGroupParams, SummarizeArticleParams, EditWindowParams, AnalyzeImageParams, AnalyzePdfParams, CreateTaskParams, ViewTasksParams, SetReminderParams, WeatherParams, NewsParams, StocksParams } from './types';
 import { eventBus } from '@/lib/eventBus';
+import { windowRegistry } from './windowRegistry';
 
 export interface ExecutionResult {
   taskId: string;
@@ -11,13 +12,9 @@ export interface ExecutionResult {
 }
 
 export class ToolExecutor {
-<<<<<<< HEAD
-  async executeTasks(tasks: Task[], uiContext?: any): Promise<ExecutionResult[]> {
-=======
   // Note: all web search now routes through server API; no client Gemini usage
   constructor() {}
   async executeTasks(tasks: Task[]): Promise<ExecutionResult[]> {
->>>>>>> VarshyGemini
     eventBus.emit('ai:task_queue_updated', tasks);
     const results: ExecutionResult[] = [];
     
