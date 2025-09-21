@@ -112,6 +112,17 @@ export const AVAILABLE_TOOLS: Tool[] = [
     }
   },
   {
+    name: 'start_adaptive_quiz',
+    description: 'Start an adaptive quiz window by topic (e.g., addition). The quiz listens to voice answers and adjusts difficulty.',
+    parameters: {
+      type: 'object',
+      properties: {
+        topic: { type: 'string', description: 'Quiz topic, e.g., addition' }
+      },
+      required: ['topic']
+    }
+  },
+  {
     name: 'search',
     description: 'Performs a web-grounded search using AI and displays results in a new window. Use for queries like "search for [topic]" or "find information about [subject]".',
     parameters: {

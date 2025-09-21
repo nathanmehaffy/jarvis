@@ -6,6 +6,7 @@ import { WindowData, WindowManagerState } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
 import { SearchResultsWindow } from '../searchResults';
 import IntegralGraphWindow from '@/ui/components/mathVisual/IntegralGraphWindow';
+import AdaptiveQuizWindow from '@/ui/components/adaptiveQuiz/AdaptiveQuizWindow';
 import { MarkdownText } from '../markdownText';
 // import { contentSimilarityAnalyzer } from '@/lib/contentSimilarity';
 
@@ -669,6 +670,10 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         if (data?.type === 'search-results') {
           console.log('🔍 [WindowManager] Creating SearchResultsWindow component');
           component = () => <SearchResultsWindow content={content} />;
+        } else if (data?.type === 'adaptive-quiz') {
+          const anyData = data as any;
+          const topic = String(anyData?.topic || 'addition');
+          component = () => <AdaptiveQuizWindow topic={topic as any} windowId={id} />;
         } else if (data?.type === 'math-visual') {
           console.log('🧮 [WindowManager] Creating IntegralGraphWindow component');
           const anyData = data as any;
