@@ -24,7 +24,9 @@ export function Window({
 	lockAspectRatio = false,
 	headerStyle = 'standard',
 	resizable = false,
-	animationState = 'none'
+	animationState = 'none',
+	group,
+	groupColor
 }: WindowProps) {
 	const windowRef = useRef<HTMLDivElement>(null);
 	const [position, setPosition] = useState({ x: initialX, y: initialY });
@@ -226,14 +228,20 @@ export function Window({
 			? 'will-change-transform' 
 			: 'will-change-transform transition-all duration-300';
 		
-		const baseClasses = `absolute bg-black/40 backdrop-blur-2xl rounded-2xl shadow-2xl border border-cyan-400/30 overflow-hidden hover:shadow-cyan-400/20 hover:shadow-2xl hover:bg-black/50 ${transitionClasses}`;
+		// Use group color for border if available, otherwise default cyan
+		const borderColor = groupColor || '#06B6D4'; // default cyan
+		const borderColorClass = groupColor ? '' : 'border-cyan-400/30';
+		const hoverShadowClass = groupColor ? '' : 'hover:shadow-cyan-400/20';
+		
+		const baseClasses = `absolute bg-black/40 backdrop-blur-2xl rounded-2xl shadow-2xl border-2 overflow-hidden hover:shadow-2xl hover:bg-black/50 ${transitionClasses} ${borderColorClass} ${hoverShadowClass}`;
 
 		if (isFullscreen) {
-			return `${baseClasses} fixed inset-0 rounded-none z-50 bg-black/60 border-cyan-400/50`;
+			const fullscreenBorderClass = groupColor ? '' : 'border-cyan-400/50';
+			return `${baseClasses} fixed inset-0 rounded-none z-50 bg-black/60 border-4 ${fullscreenBorderClass}`;
 		}
 
 		const activeClasses = isActive
-			? 'shadow-cyan-400/30 border-cyan-400/60 shadow-cyan-400/40'
+			? (groupColor ? '' : 'shadow-cyan-400/30 border-cyan-400/60 shadow-cyan-400/40')
 			: 'shadow-black/40';
 
 		switch (animationState) {
@@ -251,13 +259,27 @@ export function Window({
 			ref={windowRef}
 			data-window-id={id}
 			className={getAnimationClasses()}
-			style={isFullscreen ? { zIndex } : {
+			style={isFullscreen ? { 
+				zIndex,
+				...(groupColor && {
+					borderColor: `${groupColor}80`, // 50% opacity
+					boxShadow: isActive 
+						? `0 0 20px ${groupColor}40, 0 0 40px ${groupColor}20` 
+						: `0 0 10px ${groupColor}20`
+				})
+			} : {
 				'--window-x': `${position.x}px`,
 				'--window-y': `${position.y}px`,
 				transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
 				width: size.width,
 				height: isMinimized ? 'auto' : size.height,
-				zIndex
+				zIndex,
+				...(groupColor && {
+					borderColor: `${groupColor}80`, // 50% opacity
+					boxShadow: isActive 
+						? `0 0 20px ${groupColor}40, 0 0 40px ${groupColor}20` 
+						: `0 0 10px ${groupColor}20`
+				})
 			} as React.CSSProperties}
 			onMouseDown={() => onFocus()}
 		>
