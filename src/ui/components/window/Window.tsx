@@ -21,6 +21,9 @@ export function Window({
 	onFullscreen = () => {},
 	onFocus = () => {},
 	onPositionChange,
+	lockAspectRatio = false,
+	headerStyle = 'standard',
+	resizable = false,
 	animationState = 'none'
 }: WindowProps) {
 	const windowRef = useRef<HTMLDivElement>(null);
@@ -65,6 +68,8 @@ export function Window({
 		document.addEventListener('mouseup', onMouseUp);
 	};
 
+// legacy resizer removed in favor of directional resize handles
+
 	const onMouseMove = (e: MouseEvent) => {
 		if (isDraggingRef.current) {
 			const newPosition = {
@@ -73,7 +78,7 @@ export function Window({
 			};
 			
 			// Use requestAnimationFrame for smooth updates
-			if (window.requestAnimationFrame) {
+			if (typeof window.requestAnimationFrame === 'function') {
 				cancelAnimationFrame(lastUpdateRef.current);
 				lastUpdateRef.current = requestAnimationFrame(() => {
 					setPosition(newPosition);
@@ -213,51 +218,65 @@ export function Window({
 			} as React.CSSProperties}
 			onMouseDown={() => onFocus()}
 		>
-			<div className={`flex items-center px-3 py-2 select-none cursor-move backdrop-blur-sm ${isActive ? 'bg-gradient-to-r from-cyan-900/60 via-blue-900/50 to-purple-900/60 border-b border-cyan-400/40 shadow-inner shadow-cyan-400/20' : 'bg-gradient-to-r from-gray-900/60 via-slate-900/50 to-gray-900/60 border-b border-gray-600/30'}`} onMouseDown={onMouseDown}>
-				<div className="flex items-center space-x-1.5">
-					<div className="group flex items-center space-x-1">
-						<button
-							onClick={onClose}
-							className="w-3 h-3 rounded-full bg-gradient-to-br from-purple-400 to-violet-600 hover:from-purple-300 hover:to-violet-500 transition-all duration-200 flex-shrink-0 flex items-center justify-center shadow-sm hover:shadow-purple-400/60 hover:shadow-lg transform hover:scale-110 ring-0 hover:ring-1 hover:ring-purple-400/60 neon-glow-purple"
-							onMouseDown={(e) => e.stopPropagation()}
-							style={{
-								boxShadow: '0 0 8px rgba(168, 85, 247, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
-							}}
-						>
-							<span className="text-[10px] text-white font-bold leading-none opacity-80 group-hover:opacity-100 transition-opacity duration-200 drop-shadow-sm">
-								×
-							</span>
-						</button>
-						<button
-							onClick={handleMinimizeClick}
-							className="w-3 h-3 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 transition-all duration-200 flex-shrink-0 flex items-center justify-center shadow-sm hover:shadow-cyan-400/60 hover:shadow-lg transform hover:scale-110 ring-0 hover:ring-1 hover:ring-cyan-400/60 neon-glow-cyan"
-							onMouseDown={(e) => e.stopPropagation()}
-							title={isMinimized ? 'Restore' : 'Minimize'}
-							style={{
-								boxShadow: '0 0 8px rgba(34, 211, 238, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
-							}}
-						>
-							<span className="text-[10px] text-white font-bold leading-none opacity-80 group-hover:opacity-100 transition-opacity duration-200 drop-shadow-sm">
-								{isMinimized ? '+' : '−'}
-							</span>
-						</button>
-						<button
-							onClick={onFullscreen}
-							className="w-3 h-3 rounded-full bg-gradient-to-br from-lime-400 to-green-500 hover:from-lime-300 hover:to-green-400 transition-all duration-200 flex-shrink-0 flex items-center justify-center shadow-sm hover:shadow-lime-400/60 hover:shadow-lg transform hover:scale-110 ring-0 hover:ring-1 hover:ring-lime-400/60 neon-glow-lime"
-							onMouseDown={(e) => e.stopPropagation()}
-							title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-							style={{
-								boxShadow: '0 0 8px rgba(163, 230, 53, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
-							}}
-						>
-							<span className="text-[10px] text-white font-bold leading-none opacity-80 group-hover:opacity-100 transition-opacity duration-200 drop-shadow-sm">
-								{isFullscreen ? '⤈' : '⤢'}
-							</span>
-						</button>
+			{headerStyle === 'standard' ? (
+				<div className={`flex items-center px-3 py-2 select-none cursor-move backdrop-blur-sm ${isActive ? 'bg-gradient-to-r from-cyan-900/60 via-blue-900/50 to-purple-900/60 border-b border-cyan-400/40 shadow-inner shadow-cyan-400/20' : 'bg-gradient-to-r from-gray-900/60 via-slate-900/50 to-gray-900/60 border-b border-gray-600/30'}`} onMouseDown={onMouseDown}>
+					<div className="flex items-center space-x-1.5">
+						<div className="group flex items-center space-x-1">
+							<button
+								onClick={onClose}
+								className="w-3 h-3 rounded-full bg-gradient-to-br from-purple-400 to-violet-600 hover:from-purple-300 hover:to-violet-500 transition-all duration-200 flex-shrink-0 flex items-center justify-center shadow-sm hover:shadow-purple-400/60 hover:shadow-lg transform hover:scale-110 ring-0 hover:ring-1 hover:ring-purple-400/60 neon-glow-purple"
+								onMouseDown={(e) => e.stopPropagation()}
+								style={{
+									boxShadow: '0 0 8px rgba(168, 85, 247, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+								}}
+							>
+								<span className="text-[10px] text-white font-bold leading-none opacity-80 group-hover:opacity-100 transition-opacity duration-200 drop-shadow-sm">
+									×
+								</span>
+							</button>
+							<button
+								onClick={handleMinimizeClick}
+								className="w-3 h-3 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 transition-all duration-200 flex-shrink-0 flex items-center justify-center shadow-sm hover:shadow-cyan-400/60 hover:shadow-lg transform hover:scale-110 ring-0 hover:ring-1 hover:ring-cyan-400/60 neon-glow-cyan"
+								onMouseDown={(e) => e.stopPropagation()}
+								title={isMinimized ? 'Restore' : 'Minimize'}
+								style={{
+									boxShadow: '0 0 8px rgba(34, 211, 238, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+								}}
+							>
+								<span className="text-[10px] text-white font-bold leading-none opacity-80 group-hover:opacity-100 transition-opacity duration-200 drop-shadow-sm">
+									{isMinimized ? '+' : '−'}
+								</span>
+							</button>
+							<button
+								onClick={onFullscreen}
+								className="w-3 h-3 rounded-full bg-gradient-to-br from-lime-400 to-green-500 hover:from-lime-300 hover:to-green-400 transition-all duration-200 flex-shrink-0 flex items-center justify-center shadow-sm hover:shadow-lime-400/60 hover:shadow-lg transform hover:scale-110 ring-0 hover:ring-1 hover:ring-lime-400/60 neon-glow-lime"
+								onMouseDown={(e) => e.stopPropagation()}
+								title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+								style={{
+									boxShadow: '0 0 8px rgba(163, 230, 53, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+								}}
+							>
+								<span className="text-[10px] text-white font-bold leading-none opacity-80 group-hover:opacity-100 transition-opacity duration-200 drop-shadow-sm">
+									{isFullscreen ? '⤈' : '⤢'}
+								</span>
+							</button>
+						</div>
+						<span className={`text-xs font-semibold ${isActive ? 'text-cyan-200 drop-shadow-lg shadow-cyan-400/70' : 'text-cyan-300/90'}`}>{title}</span>
 					</div>
-					<span className={`text-xs font-semibold ${isActive ? 'text-cyan-200 drop-shadow-lg shadow-cyan-400/70' : 'text-cyan-300/90'}`}>{title}</span>
 				</div>
-			</div>
+			) : (
+				<div className="absolute top-3 right-3 flex space-x-2 z-30">
+					<button
+						onClick={onClose}
+						className="w-6 h-6 rounded-full bg-red-500/40 hover:bg-red-600/60 backdrop-blur-sm flex items-center justify-center transition-all duration-200 hover:scale-110"
+						title="Close"
+					>
+						<svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+			)}
 			{!isMinimized && (
 				<div className={`w-full bg-black/30 backdrop-blur-sm border-t border-cyan-400/20 ${isFullscreen ? 'h-[calc(100vh-40px)]' : 'h-[calc(100%-40px)]'}`}>
 					<div className="p-1">
@@ -266,44 +285,20 @@ export function Window({
 				</div>
 			)}
 
-			{/* Resize handles - only show when not minimized and not fullscreen */}
-			{!isMinimized && !isFullscreen && (
+			{/* Resize handles - only show when resizable, not minimized and not fullscreen */}
+			{resizable && !isMinimized && !isFullscreen && (
 				<>
 					{/* Corner handles */}
-					<div
-						className="absolute top-0 left-0 w-4 h-4 cursor-nw-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/20 hover:bg-cyan-400/40 hover:shadow-cyan-400/50 hover:shadow-md rounded-br-lg"
-						onMouseDown={(e) => onResizeStart(e, 'top-left')}
-					/>
-					<div
-						className="absolute top-0 right-0 w-4 h-4 cursor-ne-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/20 hover:bg-cyan-400/40 hover:shadow-cyan-400/50 hover:shadow-md rounded-bl-lg"
-						onMouseDown={(e) => onResizeStart(e, 'top-right')}
-					/>
-					<div
-						className="absolute bottom-0 left-0 w-4 h-4 cursor-sw-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/20 hover:bg-cyan-400/40 hover:shadow-cyan-400/50 hover:shadow-md rounded-tr-lg"
-						onMouseDown={(e) => onResizeStart(e, 'bottom-left')}
-					/>
-					<div
-						className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/30 hover:bg-cyan-400/50 hover:shadow-cyan-400/50 hover:shadow-md rounded-tl-lg"
-						onMouseDown={(e) => onResizeStart(e, 'bottom-right')}
-					/>
+					<div className="absolute top-0 left-0 w-4 h-4 cursor-nw-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/20 hover:bg-cyan-400/40 hover:shadow-cyan-400/50 hover:shadow-md rounded-br-lg" onMouseDown={(e) => onResizeStart(e, 'top-left')} />
+					<div className="absolute top-0 right-0 w-4 h-4 cursor-ne-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/20 hover:bg-cyan-400/40 hover:shadow-cyan-400/50 hover:shadow-md rounded-bl-lg" onMouseDown={(e) => onResizeStart(e, 'top-right')} />
+					<div className="absolute bottom-0 left-0 w-4 h-4 cursor-sw-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/20 hover:bg-cyan-400/40 hover:shadow-cyan-400/50 hover:shadow-md rounded-tr-lg" onMouseDown={(e) => onResizeStart(e, 'bottom-left')} />
+					<div className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/30 hover:bg-cyan-400/50 hover:shadow-cyan-400/50 hover:shadow-md rounded-tl-lg" onMouseDown={(e) => onResizeStart(e, 'bottom-right')} />
 
 					{/* Edge handles */}
-					<div
-						className="absolute top-0 left-4 right-4 h-2 cursor-n-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/10 hover:bg-cyan-400/30 hover:shadow-cyan-400/20 hover:shadow-sm"
-						onMouseDown={(e) => onResizeStart(e, 'top')}
-					/>
-					<div
-						className="absolute bottom-0 left-4 right-4 h-2 cursor-s-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/10 hover:bg-cyan-400/30 hover:shadow-cyan-400/20 hover:shadow-sm"
-						onMouseDown={(e) => onResizeStart(e, 'bottom')}
-					/>
-					<div
-						className="absolute top-4 bottom-4 left-0 w-2 cursor-w-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/10 hover:bg-cyan-400/30 hover:shadow-cyan-400/20 hover:shadow-sm"
-						onMouseDown={(e) => onResizeStart(e, 'left')}
-					/>
-					<div
-						className="absolute top-4 bottom-4 right-0 w-2 cursor-e-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/10 hover:bg-cyan-400/30 hover:shadow-cyan-400/20 hover:shadow-sm"
-						onMouseDown={(e) => onResizeStart(e, 'right')}
-					/>
+					<div className="absolute top-0 left-4 right-4 h-2 cursor-n-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/10 hover:bg-cyan-400/30 hover:shadow-cyan-400/20 hover:shadow-sm" onMouseDown={(e) => onResizeStart(e, 'top')} />
+					<div className="absolute bottom-0 left-4 right-4 h-2 cursor-s-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/10 hover:bg-cyan-400/30 hover:shadow-cyan-400/20 hover:shadow-sm" onMouseDown={(e) => onResizeStart(e, 'bottom')} />
+					<div className="absolute top-4 bottom-4 left-0 w-2 cursor-w-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/10 hover:bg-cyan-400/30 hover:shadow-cyan-400/20 hover:shadow-sm" onMouseDown={(e) => onResizeStart(e, 'left')} />
+					<div className="absolute top-4 bottom-4 right-0 w-2 cursor-e-resize opacity-0 hover:opacity-100 transition-all duration-200 bg-cyan-400/10 hover:bg-cyan-400/30 hover:shadow-cyan-400/20 hover:shadow-sm" onMouseDown={(e) => onResizeStart(e, 'right')} />
 				</>
 			)}
 		</div>

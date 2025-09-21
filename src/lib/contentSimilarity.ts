@@ -121,11 +121,17 @@ export class ContentSimilarityAnalyzer {
 
     console.log('🧮 Similarity calculation:', calcDetails);
 
-    // Send to system output via event bus
-    if (typeof window !== 'undefined' && (window as any).eventBus) {
-      (window as any).eventBus.emit('system:output', {
-        text: `🧮 Similarity calculation:\n${JSON.stringify(calcDetails, null, 2)}\n\n`
-      });
+    // Send to system output via event bus when available (browser only)
+    if (typeof window !== 'undefined') {
+      try {
+        // dynamic import to avoid SSR issues
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        import('@/lib/eventBus').then(({ eventBus }) => {
+          eventBus.emit('system:output', {
+            text: `🧮 Similarity calculation:\n${JSON.stringify(calcDetails, null, 2)}\n\n`
+          });
+        });
+      } catch {}
     }
 
     return {

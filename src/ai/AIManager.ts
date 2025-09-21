@@ -1,35 +1,51 @@
 import { eventBus } from '@/lib/eventBus';
-import type { Task } from './types';
+
+type SerializableWindow = {
+  id: string;
+  title?: string;
+  isOpen?: boolean;
+  isMinimized?: boolean;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  zIndex?: number;
+};
+
+type SerializableUIContext = { windows?: SerializableWindow[] };
 
 export class AIManager {
   private worker: Worker | null = null;
   private isInitialized = false;
-  private uiContext: any = {};
+  private uiContext: SerializableUIContext = {};
 
   // Only send data that can be structured-cloned to the worker
-  private getSerializableUIContext(): any {
+  private getSerializableUIContext(): SerializableUIContext {
     try {
       const context = this.uiContext || {};
-      const serializable: any = {};
+      const serializable: SerializableUIContext = {};
 
       if (Array.isArray(context.windows)) {
-        serializable.windows = context.windows.map((w: any) => ({
-          id: w?.id,
-          title: w?.title,
-          // omit component/functions; include only plain data
-          isOpen: Boolean(w?.isOpen),
-          isMinimized: Boolean(w?.isMinimized),
-          x: typeof w?.x === 'number' ? w.x : undefined,
-          y: typeof w?.y === 'number' ? w.y : undefined,
-          width: typeof w?.width === 'number' ? w.width : undefined,
-          height: typeof w?.height === 'number' ? w.height : undefined,
-          zIndex: typeof w?.zIndex === 'number' ? w.zIndex : undefined
-        }));
+        const cleaned: SerializableWindow[] = context.windows
+          .filter((w: Partial<SerializableWindow>): w is SerializableWindow => typeof w?.id === 'string')
+          .map((w) => ({
+            id: w.id,
+            title: w.title,
+            // omit component/functions; include only plain data
+            isOpen: Boolean(w.isOpen),
+            isMinimized: Boolean(w.isMinimized),
+            x: typeof w.x === 'number' ? w.x : undefined,
+            y: typeof w.y === 'number' ? w.y : undefined,
+            width: typeof w.width === 'number' ? w.width : undefined,
+            height: typeof w.height === 'number' ? w.height : undefined,
+            zIndex: typeof w.zIndex === 'number' ? w.zIndex : undefined
+          }));
+        serializable.windows = cleaned;
       }
 
       return serializable;
     } catch {
-      return {};
+      return {} as SerializableUIContext;
     }
   }
 
@@ -66,21 +82,16 @@ export class AIManager {
       this.isInitialized = true;
       eventBus.emit('ai:initialized');
 
-      // Bridge: when input emits parsed task strings, forward each to worker for parsing & execution
-      eventBus.on('input:tasks', (data: { tasks: Array<{ id: string; text: string }> }) => {
+      // Bridge: when input emits transcript updates, forward to worker for stateful processing
+      eventBus.on('input:transcript_updated', (data: { transcript: string }) => {
         try {
-          const items = Array.isArray(data?.tasks) ? data.tasks : [];
-          if (items.length === 0) return;
-          eventBus.emit('ai:processing', { count: items.length });
-          for (const item of items) {
-            const text = item?.text ?? '';
-            if (typeof text === 'string' && text.trim().length > 0) {
-              this.worker?.postMessage({
-                type: 'PROCESS_TEXT_COMMAND',
-                data: { text, uiContext: this.getSerializableUIContext() }
-              });
-            }
-          }
+          const transcript = (data?.transcript || '').trim();
+          if (!transcript) return;
+          eventBus.emit('ai:processing', { count: 1 });
+          this.worker?.postMessage({
+            type: 'PROCESS_TEXT_COMMAND',
+            data: { transcript, uiContext: this.getSerializableUIContext() }
+          });
         } catch (e) {
           eventBus.emit('ai:error', e);
         }
@@ -91,11 +102,15 @@ export class AIManager {
     }
   }
 
-  setUIContext(context: any): void {
+  setUIContext(context: SerializableUIContext): void {
     this.uiContext = context;
+    try {
+      // Forward context to worker so it can be included in ConversationState
+      this.worker?.postMessage({ type: 'SET_UI_CONTEXT', data: this.getSerializableUIContext() });
+    } catch {}
   }
 
-  processRequest(request: any): void {
+  processRequest(request: unknown): void {
     if (!this.worker) {
       console.warn('AI worker not initialized');
       return;
@@ -103,7 +118,7 @@ export class AIManager {
 
     this.worker.postMessage({
       type: 'PROCESS_AI_REQUEST',
-      data: { ...request, uiContext: this.getSerializableUIContext() }
+      data: { ...(request as object), uiContext: this.getSerializableUIContext() }
     });
   }
 
@@ -119,7 +134,7 @@ export class AIManager {
     });
   }
 
-  generateResponse(prompt: any): void {
+  generateResponse(prompt: unknown): void {
     if (!this.worker) {
       console.warn('AI worker not initialized');
       return;
@@ -127,11 +142,11 @@ export class AIManager {
 
     this.worker.postMessage({
       type: 'GENERATE_RESPONSE',
-      data: prompt
+      data: prompt as object
     });
   }
 
-  analyzeData(data: any): void {
+  analyzeData(data: unknown): void {
     if (!this.worker) {
       console.warn('AI worker not initialized');
       return;
@@ -139,7 +154,7 @@ export class AIManager {
 
     this.worker.postMessage({
       type: 'ANALYZE_DATA',
-      data: data
+      data: data as object
     });
   }
 

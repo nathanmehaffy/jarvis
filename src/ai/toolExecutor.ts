@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Task, OpenWindowParams, CloseWindowParams } from './types';
 import { eventBus } from '@/lib/eventBus';
-import { windowRegistry } from './windowRegistry';
 
 export interface ExecutionResult {
   taskId: string;
@@ -12,13 +11,13 @@ export interface ExecutionResult {
 }
 
 export class ToolExecutor {
-  async executeTasks(tasks: Task[]): Promise<ExecutionResult[]> {
+  async executeTasks(tasks: Task[], uiContext?: any): Promise<ExecutionResult[]> {
     eventBus.emit('ai:task_queue_updated', tasks);
     const results: ExecutionResult[] = [];
     
     for (const task of tasks) {
       try {
-        const result = await this.executeTask(task);
+        const result = await this.executeTask(task, uiContext);
         results.push(result);
       } catch (error) {
         const errorResult = {
@@ -35,7 +34,7 @@ export class ToolExecutor {
     return results;
   }
 
-  private async executeTask(task: Task): Promise<ExecutionResult> {
+  private async executeTask(task: Task, uiContext?: any): Promise<ExecutionResult> {
     eventBus.emit('ai:task_started', { task });
     const startTime = Date.now();
     
@@ -47,7 +46,7 @@ export class ToolExecutor {
           break;
         
         case 'close_window':
-          result = await this.executeCloseWindow(task);
+          result = await this.executeCloseWindow(task, uiContext);
           break;
         
         default:
@@ -69,7 +68,7 @@ export class ToolExecutor {
   }
 
   private async executeOpenWindow(task: Task): Promise<ExecutionResult> {
-    const params = task.parameters as OpenWindowParams;
+    const params = task.parameters as unknown as OpenWindowParams;
     eventBus.emit('ai:tool_call_started', { task, tool: 'open_window', params });
     
     // Validate parameters
@@ -125,43 +124,37 @@ export class ToolExecutor {
     return result;
   }
 
-  private async executeCloseWindow(task: Task): Promise<ExecutionResult> {
-    const params = task.parameters as CloseWindowParams;
+  private async executeCloseWindow(task: Task, uiContext?: any): Promise<ExecutionResult> {
+    const params = task.parameters as unknown as CloseWindowParams;
     eventBus.emit('ai:tool_call_started', { task, tool: 'close_window', params });
 
     // Resolve selector to actual window ID if needed
     let targetWindowId = params.windowId;
     if (!targetWindowId && params.selector) {
+      const windows: Array<{ id: string; createdAt?: number; zIndex?: number; isMinimized?: boolean }>
+        = Array.isArray(uiContext?.windows) ? uiContext.windows : [];
       if (params.selector === 'newest' || params.selector === 'latest') {
-        targetWindowId = windowRegistry.getNewest()?.id;
+        targetWindowId = (windows.slice().sort((a, b) => (b.zIndex ?? 0) - (a.zIndex ?? 0))[0] || {}).id;
       } else if (params.selector === 'oldest') {
-        targetWindowId = windowRegistry.getOldest()?.id;
+        targetWindowId = (windows.slice().sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))[0] || {}).id;
       } else if (params.selector === 'active') {
-        const reg: any = windowRegistry as any;
-        targetWindowId = reg.getActive ? reg.getActive()?.id : undefined;
+        targetWindowId = (windows.slice().sort((a, b) => (b.zIndex ?? 0) - (a.zIndex ?? 0))[0] || {}).id;
       } else if (params.selector === 'all') {
-        // Broadcast close for each known window
-        const reg: any = windowRegistry as any;
-        const all: Array<{ id: string }> = (reg.getAll ? reg.getAll() : []) || [];
-        all.forEach(w => {
-          const closeData = { windowId: w.id, timestamp: Date.now() };
+        const ids = windows.map(w => w.id);
+        ids.forEach(id => {
+          const closeData = { windowId: id, timestamp: Date.now() };
           eventBus.emit('ui:close_window', closeData);
           eventBus.emit('window:closed', closeData);
-          
-          // Forward to worker if needed
           try {
             if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
               (self as any).postMessage({ type: 'UI_CLOSE_WINDOW', data: closeData });
             }
-          } catch (_) {
-            // no-op
-          }
+          } catch (_) {}
         });
-        console.log(`[ToolExecutor] Closing all windows (${all.length})`);
         const result = {
           taskId: task.id,
           success: true,
-          result: { closedAll: true, count: all.length },
+          result: { closedAll: true, count: ids.length },
           timestamp: Date.now()
         };
         eventBus.emit('ai:tool_call_completed', { task, tool: 'close_window', result });

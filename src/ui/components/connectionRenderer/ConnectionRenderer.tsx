@@ -30,7 +30,7 @@ export function ConnectionRenderer({
   const [selectedConnection, setSelectedConnection] = useState<Connection | null>(null);
   const [, forceUpdate] = useState({});
   const isDraggingRef = useRef(false);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | null>(null);
 
   // Force re-render when windows array changes (positions, etc)
   useEffect(() => {
@@ -71,8 +71,7 @@ export function ConnectionRenderer({
   useEffect(() => {
     if (!isVisible) return;
 
-    let animationFrameId: number;
-    let isDragging = false;
+    const isDragging = false;
     let dragTimeout: NodeJS.Timeout;
 
     const forceConnectionUpdate = () => {

@@ -37,25 +37,50 @@ export function DebugSidebar({
   const [openSidebar, setOpenSidebar] = useState<OpenSidebar>(null);
   const [taskQueue, setTaskQueue] = useState<Task[]>([]);
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
-  const [recentToolCalls, setRecentToolCalls] = useState<any[]>([]);
+  const [recentToolCalls, setRecentToolCalls] = useState<Array<{ task: Task; tool: string; params?: unknown; status: string; timestamp: number; result?: unknown }>>([]);
+  const [inputBuffer, setInputBuffer] = useState<string>('');
+  type SubmittedEntry = { kind: 'submitted'; id: string; text: string; source: string; timestamp: number };
+  type RunEntry = { kind: 'run'; id: string; tool: string; description: string; timestamp: number; status: 'started' | 'completed' | 'failed'; result?: unknown; error?: unknown };
+  type ActionLogEntry = SubmittedEntry | RunEntry;
+  const [aiActionLog, setAiActionLog] = useState<ActionLogEntry[]>([]);
 
   useEffect(() => {
     const listeners = [
+      // Input
+      eventBus.on('input:voice_debug', (d: { bufferText?: string }) => {
+        if (d && typeof d.bufferText === 'string') {
+          setInputBuffer(d.bufferText);
+        }
+      }),
+      eventBus.on('input:transcript_updated', (data: { transcript?: string }) => {
+        try {
+          const transcript = String(data?.transcript || '').trim();
+          if (!transcript) return;
+          const entry: SubmittedEntry = { kind: 'submitted', id: Math.random().toString(36).slice(2), text: transcript, source: 'transcript', timestamp: Date.now() };
+          setAiActionLog(prev => [entry, ...prev].slice(0, 30));
+        } catch {}
+      }),
+
+      // AI tasks lifecycle
       eventBus.on('ai:task_queue_updated', (tasks: Task[]) => setTaskQueue(tasks)),
       eventBus.on('ai:task_started', ({ task }: { task: Task }) => {
         setCurrentTask(task);
         setTaskQueue(prev => prev.filter(t => t.id !== task.id));
+        const entry: RunEntry = { kind: 'run', id: task.id, tool: task.tool, description: task.description, timestamp: Date.now(), status: 'started' };
+        setAiActionLog(prev => [entry, ...prev].slice(0, 30));
       }),
-      eventBus.on('ai:task_completed', () => {
+      eventBus.on('ai:task_completed', ({ task, result }: { task: Task; result: unknown }) => {
         setCurrentTask(null);
+        setAiActionLog(prev => prev.map(e => (e.kind === 'run' && e.id === task?.id) ? { ...e, status: 'completed', result } as RunEntry : e));
       }),
-      eventBus.on('ai:task_failed', () => {
+      eventBus.on('ai:task_failed', ({ task, error }: { task: Task; error: unknown }) => {
         setCurrentTask(null);
+        setAiActionLog(prev => prev.map(e => (e.kind === 'run' && e.id === task?.id) ? { ...e, status: 'failed', error } as RunEntry : e));
       }),
-      eventBus.on('ai:tool_call_started', (data: any) => {
+      eventBus.on('ai:tool_call_started', (data: { task: Task; tool: string; params?: unknown }) => {
         setRecentToolCalls(prev => [{ ...data, status: 'started', timestamp: Date.now() }, ...prev].slice(0, 5));
       }),
-      eventBus.on('ai:tool_call_completed', (data: any) => {
+      eventBus.on('ai:tool_call_completed', (data: { task: Task; tool: string; result?: unknown }) => {
         setRecentToolCalls(prev => 
           prev.map(call => call.task.id === data.task.id ? { ...call, status: 'completed', result: data.result } : call)
         );
@@ -111,6 +136,13 @@ export function DebugSidebar({
             <div className="flex justify-between"><span>API Calls/min:</span> <span>{apiBudget.used}</span></div>
             {apiBudget.nextMs != null && <div className="flex justify-between"><span>Next Call In:</span> <span>{Math.max(0, Math.round(apiBudget.nextMs/1000))}s</span></div>}
           </div>
+
+          <div className="mt-4">
+            <h3 className="font-bold">Text Buffer</h3>
+            <div className="mt-1 text-xs bg-gray-700/50 p-2 rounded max-h-40 overflow-auto whitespace-pre-wrap break-words">
+              {inputBuffer ? inputBuffer : <span className="text-gray-400">Empty</span>}
+            </div>
+          </div>
         </div>
       )}
 
@@ -157,6 +189,34 @@ export function DebugSidebar({
                 </li>
               ))}
               {recentToolCalls.length === 0 && <li className="text-gray-400">None</li>}
+            </ul>
+          </div>
+
+          <div className="mt-4">
+            <h3 className="font-bold">Action Log</h3>
+            <ul className="mt-1 space-y-2 text-xs">
+              {aiActionLog.map((entry, i) => (
+                <li key={i} className="bg-gray-700/50 p-2 rounded">
+                  {entry.kind === 'submitted' ? (
+                    <div>
+                      <p><strong>Submitted</strong> <span className="text-gray-300">({entry.source})</span></p>
+                      <p className="truncate">{entry.text}</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <p><strong>Run</strong>: {entry.tool} <span className="text-gray-300">({entry.status})</span></p>
+                      <p className="truncate">{entry.description}</p>
+                      {entry.status === 'completed' && !!entry.result && (
+                        <p className="truncate"><strong>Result:</strong> {JSON.stringify(entry.result)}</p>
+                      )}
+                      {entry.status === 'failed' && !!entry.error && (
+                        <p className="truncate text-rose-300"><strong>Error:</strong> {String(entry.error)}</p>
+                      )}
+                    </div>
+                  )}
+                </li>
+              ))}
+              {aiActionLog.length === 0 && <li className="text-gray-400">No actions yet</li>}
             </ul>
           </div>
         </div>

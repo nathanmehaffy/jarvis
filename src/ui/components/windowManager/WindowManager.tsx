@@ -1,11 +1,8 @@
 'use client';
 
-import { useEffect, useState, forwardRef, useImperativeHandle, useCallback } from 'react';
+import { useEffect, useState, forwardRef, useImperativeHandle, useRef } from 'react';
 import { Window } from '../window';
-import { ImageWindow } from '../imageWindow';
-// import { ConnectionRenderer } from '../connectionRenderer';
-// import { ConnectionControls } from '../connectionControls';
-import { WindowData, WindowManagerState, Connection } from './windowManager.types';
+import { WindowData, WindowManagerState } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
 // import { contentSimilarityAnalyzer } from '@/lib/contentSimilarity';
 
@@ -21,8 +18,6 @@ export interface WindowManagerRef {
   restoreWindow: (windowId: string) => void;
   toggleFullscreen: (windowId: string) => void;
   getWindows: () => WindowData[];
-  toggleConnections: () => void;
-  setSimilarityThreshold: (threshold: number) => void;
   organizeWindows: () => void;
 }
 
@@ -30,19 +25,11 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
   const [state, setState] = useState<WindowManagerState>({
     windows: [],
     activeWindowId: null,
-    nextZIndex: 10,
-    connections: [],
-    deletedConnections: new Set<string>(),
-    showConnections: true,
-    similarityThreshold: 0.1
+    nextZIndex: 10
   });
 
   // Helper function to create a unique connection ID
-  const getConnectionId = (windowId1: string, windowId2: string): string => {
-    // Always use consistent ordering to ensure same ID for bidirectional connections
-    const [id1, id2] = [windowId1, windowId2].sort();
-    return `${id1}--${id2}`;
-  };
+  // Connections feature removed per decision
 
   const getOptimalPosition = (width: number, height: number, currentWindows: WindowData[]): { x: number; y: number } => {
     const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
@@ -290,13 +277,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
     const totalArea = packedWindows.reduce((sum, w) => sum + (w.width * w.height), 0);
     const minAreaWindows = packedWindows.filter(w => (w.width * w.height) <= minAreaPerWindow * 1.1);
 
-    eventBus.emit('system:output', {
-      text: `Windows organized with MINIMUM AREA PRIORITY!\n\n✅ ${packedWindows.length} windows organized\n✅ All windows meet minimum area requirement (${minAreaPerWindow.toLocaleString()}px²)\n${minAreaWindows.length > 0 ? `⚠️ ${minAreaWindows.length} windows at minimum size\n⚠️ Minor overlaps allowed to preserve minimum area\n` : '✅ No overlaps needed\n'}\nTotal area: ${totalArea.toLocaleString()}px²\nMargin: ${margin}px\n\nWindow details:\n${packedWindows.map(w => {
-        const area = w.width * w.height;
-        const isMinArea = area <= minAreaPerWindow * 1.1;
-        return `• ${w.title.split(':')[1]?.trim() || w.id}: ${w.width}×${w.height} (${area.toLocaleString()}px²)${isMinArea ? ' [MIN AREA]' : ''}`;
-      }).join('\n')}\n\n`
-    });
+    // logs muted per decision
   };
 
   // const analyzeWindowSimilarities = useCallback((windows: WindowData[], currentState: WindowManagerState) => {
@@ -423,16 +404,8 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         nextZIndex: prev.nextZIndex + 1
       };
 
-      // Emit events after state update completes
+      // Emit only lightweight event; logs muted
       setTimeout(() => {
-        const windowPositions = newState.windows.map(w =>
-          `${w.title} (${w.id}): x=${Math.round(w.x)}, y=${Math.round(w.y)}, w=${w.width}, h=${w.height}`
-        ).join('\n');
-
-        eventBus.emit('system:output', {
-          text: `Window opened: ${windowData.title}\nPosition: x=${Math.round(optimalPosition.x)}, y=${Math.round(optimalPosition.y)} (top-left priority positioning)\nSize: ${windowData.width}x${windowData.height}\n\nAll windows:\n${windowPositions}\n\n`
-        });
-
         try {
           eventBus.emit('window:opened', { id: windowData.id, type: 'ui', title: windowData.title });
         } catch {}
@@ -469,7 +442,6 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
           : w
       )
     }));
-
     // After animation completes, remove the window
     setTimeout(() => {
       setState(prev => ({
@@ -564,50 +536,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
     });
   };
 
-  const toggleConnections = () => {
-    setState(prev => ({ ...prev, showConnections: !prev.showConnections }));
-  };
-
-  const setSimilarityThreshold = (threshold: number) => {
-    setState(prev => ({ ...prev, similarityThreshold: threshold }));
-  };
-
-  const deleteConnection = (connectionToDelete: Connection) => {
-    const connectionId = getConnectionId(connectionToDelete.windowId1, connectionToDelete.windowId2);
-
-    setState(prev => {
-      const newDeletedConnections = new Set(prev.deletedConnections);
-      newDeletedConnections.add(connectionId);
-
-      // Remove the connection from active connections and add to deleted list
-      const updatedConnections = prev.connections.filter(conn =>
-        !(conn.windowId1 === connectionToDelete.windowId1 &&
-          conn.windowId2 === connectionToDelete.windowId2) &&
-        !(conn.windowId1 === connectionToDelete.windowId2 &&
-          conn.windowId2 === connectionToDelete.windowId1)
-      );
-
-      // Add the deleted connection back with 0% score
-      updatedConnections.push({
-        windowId1: connectionToDelete.windowId1,
-        windowId2: connectionToDelete.windowId2,
-        score: 0,
-        keywords: []
-      });
-
-      return {
-        ...prev,
-        connections: updatedConnections,
-        deletedConnections: newDeletedConnections
-      };
-    });
-
-    // Log the deletion
-    console.log('🗑️ Connection permanently deleted:', connectionToDelete);
-    eventBus.emit('system:output', {
-      text: `🗑️ Connection permanently deleted between "${connectionToDelete.windowId1}" and "${connectionToDelete.windowId2}" - will stay at 0% for session\n`
-    });
-  };
+  // Connections feature removed per decision
 
   useImperativeHandle(ref, () => ({
     openWindow,
@@ -616,8 +545,6 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
     restoreWindow,
     toggleFullscreen,
     getWindows: () => state.windows,
-    toggleConnections,
-    setSimilarityThreshold,
     organizeWindows
   }));
 
@@ -626,6 +553,40 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
       onWindowsChange(state.windows);
     }
   }, [state.windows, onWindowsChange]);
+
+  // Defer window open/close side-effects to after render commit
+  // to avoid cross-component state updates during render.
+  const prevWindowsRef = useRef<WindowData[] | null>(null);
+
+  useEffect(() => {
+    const prevWindows = prevWindowsRef.current || undefined;
+    const currWindows = state.windows;
+
+    const prevIds = new Set((prevWindows || []).map(w => w.id));
+    const currIds = new Set(currWindows.map(w => w.id));
+
+    // Newly opened windows (logs muted)
+    currWindows.forEach(w => {
+      if (!prevIds.has(w.id)) {
+        try {
+          eventBus.emit('window:opened', { id: w.id, type: 'ui', title: w.title });
+        } catch {}
+      }
+    });
+
+    // Closed windows
+    if (prevWindows) {
+      prevWindows.forEach(w => {
+        if (!currIds.has(w.id)) {
+          try {
+            eventBus.emit('window:closed', { windowId: w.id });
+          } catch {}
+        }
+      });
+    }
+
+    prevWindowsRef.current = currWindows;
+  }, [state.windows]);
 
   useEffect(() => {
     const unsubs = [
@@ -687,51 +648,11 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         {children}
       </div>
 
-      {/* Connection Controls */}
-      {/* <ConnectionControls
-        showConnections={state.showConnections}
-        similarityThreshold={state.similarityThreshold}
-        onToggleConnections={toggleConnections}
-        onThresholdChange={setSimilarityThreshold}
-      /> */}
-
-      {/* Connection Renderer */}
-      {/* <ConnectionRenderer
-        windows={state.windows}
-        connections={state.connections}
-        isVisible={state.showConnections}
-        minSimilarityThreshold={state.similarityThreshold}
-        onDeleteConnection={deleteConnection}
-      /> */}
+      {/* Connections feature removed */}
 
       {/* Render Windows */}
       {state.windows.map(window => {
         const WindowComponent = window.component;
-        const isImageWindow = window.id.startsWith('image-viewer-');
-        
-        const imageUrl = window.imageUrl || '';
-        
-        if (isImageWindow) {
-          return (
-            <ImageWindow
-              key={window.id}
-              id={window.id}
-              title={window.title}
-              initialX={window.x}
-              initialY={window.y}
-              width={window.width}
-              height={window.height}
-              isActive={state.activeWindowId === window.id}
-              onClose={() => closeWindow(window.id)}
-              onFocus={() => focusWindow(window.id)}
-              imageUrl={imageUrl}
-              animationState={window.animationState}
-            >
-              <WindowComponent />
-            </ImageWindow>
-          );
-        }
-        
         return (
           <Window
             key={window.id}
@@ -741,6 +662,9 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
             initialY={window.y}
             width={window.width}
             height={window.height}
+            headerStyle={window.id.startsWith('image-viewer-') ? 'minimal' : 'standard'}
+            lockAspectRatio={window.id.startsWith('image-viewer-')}
+            resizable
             isActive={state.activeWindowId === window.id}
             isMinimized={window.isMinimized}
             isFullscreen={window.isFullscreen}

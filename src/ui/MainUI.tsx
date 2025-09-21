@@ -46,21 +46,22 @@ export function MainUI() {
       eventBus.on('ai:text_command_processed', () => setAiStatus('ready')),
       eventBus.on('ai:ai_response_generated', () => setAiStatus('ready')),
       eventBus.on('ai:error', () => setAiStatus('error')),
-      eventBus.on('window:opened', (data: any) => {
-        if (data?.id) {
-          setOpenWindows(prev => new Set([...prev, data.id]));
+      eventBus.on('window:opened', (data: { id?: string }) => {
+        if (typeof data?.id === 'string') {
+          setOpenWindows(prev => new Set<string>([...prev, data.id as string]));
         }
       }),
-      eventBus.on('window:closed', (data: any) => {
-        if (data?.windowId) {
+      eventBus.on('window:closed', (data: { windowId?: string }) => {
+        if (typeof data?.windowId === 'string') {
+          const id = data.windowId as string;
           setOpenWindows(prev => {
             const newSet = new Set(prev);
-            newSet.delete(data.windowId);
+            newSet.delete(id);
             return newSet;
           });
           setMinimizedWindows(prev => {
             const newSet = new Set(prev);
-            newSet.delete(data.windowId);
+            newSet.delete(id);
             return newSet;
           });
         }
@@ -466,6 +467,18 @@ export function MainUI() {
 
   return (
     <div className="min-h-screen">
+      {/* Global AI loading indicator */}
+      {aiStatus === 'processing' && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60]">
+          <div className="flex items-center gap-3 px-4 py-2 rounded-full bg-black/60 text-white border border-white/10 shadow-2xl backdrop-blur">
+            <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+            </svg>
+            <span className="text-sm font-medium">Jarvis is thinking…</span>
+          </div>
+        </div>
+      )}
       <WindowManager
         ref={windowManagerRef}
         onWindowsChange={(windows) => {

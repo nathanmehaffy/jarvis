@@ -38,23 +38,20 @@ export class AITester {
       try {
         // Parse the command (may use Cerebras; fallback handles offline/rate limits)
         console.log('📝 Parsing command...');
-        const parseResult = await this.taskParser.parseTextToTasks(text);
+        const parseResult = await this.taskParser.parseTextToTasks({ transcript: text, actionHistory: [], uiContext: {} });
 
-        if (!parseResult.success) {
-          console.error('❌ Parsing failed:', parseResult.error);
-          return;
-        }
+        // New parser always returns { new_tool_calls }
 
-        console.log(`✅ Parsed ${parseResult.tasks.length} task(s):`);
-        parseResult.tasks.forEach((task, index) => {
-          console.log(`   ${index + 1}. ${task.description}`);
-          console.log(`      Tool: ${task.tool}`);
-          console.log(`      Parameters:`, task.parameters);
+        console.log(`✅ Parsed ${parseResult.new_tool_calls.length} tool call(s):`);
+        parseResult.new_tool_calls.forEach((call, index) => {
+          console.log(`   ${index + 1}. ${call.tool}`);
+          console.log(`      Parameters:`, call.parameters);
+          console.log(`      Source:`, call.sourceText);
         });
 
         // Execute the tasks
         console.log('\n⚡ Executing tasks...');
-        const executionResults = await this.toolExecutor.executeTasks(parseResult.tasks);
+        const executionResults = await this.toolExecutor.executeTasks(parseResult.new_tool_calls.map((c, i) => ({ id: `test_${i}`, tool: c.tool, parameters: c.parameters, description: c.tool })));
 
         executionResults.forEach((result, index) => {
           if (result.success) {
@@ -179,20 +176,14 @@ export class AITester {
       const testText = 'open a sticky note saying "test cerebras"';
       console.log(`Testing with: "${testText}"`);
       
-      const result = await this.taskParser.parseTextToTasks(testText);
+      const result = await this.taskParser.parseTextToTasks({ transcript: testText, actionHistory: [], uiContext: {} });
       
-      if (result.success) {
+      if (Array.isArray(result.new_tool_calls)) {
         console.log('✅ Cerebras integration working');
-        console.log('Raw response available:', !!result.rawResponse);
-        if (result.rawResponse) {
-          console.log('Model used:', result.rawResponse.model);
-          console.log('Token usage:', result.rawResponse.usage);
-          console.log('Tasks created:', result.tasks.length);
-        }
+        console.log('Calls created:', result.new_tool_calls.length);
       } else {
         console.log('⚠️ Cerebras integration failed, using fallback parsing');
-        console.log('Error:', result.error);
-        console.log('Fallback tasks created:', result.tasks.length);
+        console.log('No calls created');
       }
     } catch (error) {
       console.error('❌ Cerebras test failed:', error);
@@ -208,13 +199,8 @@ export class AITester {
     
     try {
       const simpleText = 'hello';
-      const result = await this.taskParser.parseTextToTasks(simpleText);
-      
-      if (result.rawResponse) {
-        console.log('✅ Model accessible:', result.rawResponse.model);
-      } else {
-        console.log('⚠️ Using fallback parsing');
-      }
+      await this.taskParser.parseTextToTasks({ transcript: simpleText, actionHistory: [], uiContext: {} });
+      console.log('✅ Model accessible.');
     } catch (error) {
       console.error('❌ Model test failed:', error);
     }
