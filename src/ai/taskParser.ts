@@ -33,7 +33,15 @@ export class TaskParser {
       '4. If you find new, complete commands, respond with a JSON object containing a `new_tool_calls` array.',
       '5. Each tool call in the array MUST include a `sourceText` property, containing the exact phrase from the transcript that justifies the action.',
       '6. If there are no new commands, or if a command is incomplete (e.g., "open a graph showing..."), respond with an empty `new_tool_calls` array.',
-      '7. DO NOT re-issue tool calls for commands that are already present in the `actionHistory`.'
+      '7. DO NOT re-issue tool calls for commands that are already present in the `actionHistory`.',
+      '',
+      'Command patterns to detect in addition to standard open/close/organize:',
+      '- Edit window: examples',
+      '  * "Edit window \"Green Tomatoes\" to say I love green tomatoes" → edit_window { titleMatch: "Green Tomatoes", newContent: "I love green tomatoes" }',
+      '  * "Edit window \"Budget\" title to Monthly Budget" → edit_window { titleMatch: "Budget", newTitle: "Monthly Budget" }',
+      '  * "Edit window id abc123 set title Project Plan" → edit_window { windowId: "abc123", newTitle: "Project Plan" }',
+      '',
+      'When editing windows, prefer matching by exact title (case-insensitive) when an id is not provided. Only include fields that are actually specified by the user.'
     ].join('\n');
 
     const jsonPayload = {

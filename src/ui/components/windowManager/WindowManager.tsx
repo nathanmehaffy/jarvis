@@ -371,6 +371,14 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
     return { x: scatteredX, y: scatteredY };
   };
 
+  const inferTitleFromContent = (content?: string, fallback: string = 'Window'): string => {
+    const text = (content || '').trim();
+    if (!text) return fallback;
+    // Use first non-empty line up to 80 chars as inferred title
+    const firstLine = text.split(/\n|\r/).map(s => s.trim()).find(Boolean) || fallback;
+    return firstLine.length > 80 ? firstLine.slice(0, 77) + '…' : firstLine;
+  };
+
   const openWindow = (windowData: Omit<WindowData, 'isOpen' | 'zIndex'>) => {
     // Extract keywords from content if available
     // const windowContent = contentSimilarityAnalyzer.processWindowContent(
@@ -383,8 +391,12 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
 
       const optimalPosition = getOptimalPosition(windowData.width, windowData.height, currentWindows);
 
+      const inferredTitle = inferTitleFromContent(windowData.content, windowData.title);
+
       const newWindow = {
         ...windowData,
+        title: windowData.title || inferredTitle,
+        autoTitle: !windowData.title,
         x: optimalPosition.x,
         y: optimalPosition.y,
         isOpen: true,
@@ -623,7 +635,11 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
           ...prev,
           windows: prev.windows.map(w =>
             w.id === data.windowId
-              ? { ...w, content: data.content, title: data.title || w.title }
+              ? { 
+                  ...w, 
+                  content: data.content, 
+                  title: data.title || (w.autoTitle ? inferTitleFromContent(data.content, w.title) : w.title)
+                }
               : w
           )
         }));
@@ -635,6 +651,26 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         //     return currentState;
         //   });
         // }, 500);
+      }),
+      // Generic window update: supports title/content changes by id or title match
+      eventBus.on('ui:update_window', (data: { windowId?: string; titleMatch?: string; newTitle?: string; newContent?: string }) => {
+        const { windowId, titleMatch, newTitle, newContent } = data || {} as any;
+        setState(prev => ({
+          ...prev,
+          windows: prev.windows.map(w => {
+            const isTarget = (windowId && w.id === windowId) || (titleMatch && w.title.toLowerCase() === String(titleMatch).toLowerCase());
+            if (!isTarget) return w;
+            const updatedTitle = typeof newTitle === 'string' && newTitle.length > 0
+              ? newTitle
+              : (w.autoTitle && typeof newContent === 'string' ? inferTitleFromContent(newContent, w.title) : w.title);
+            return {
+              ...w,
+              title: updatedTitle,
+              content: typeof newContent === 'string' ? newContent : w.content,
+              autoTitle: newTitle ? false : w.autoTitle
+            };
+          })
+        }));
       })
     ];
     return () => { unsubs.forEach((u) => u()); };

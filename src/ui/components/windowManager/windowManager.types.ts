@@ -3,6 +3,8 @@ export interface WindowData {
   title: string;
   component: React.ComponentType;
   content?: string;
+  /** When true, the manager may infer/update the title from content */
+  autoTitle?: boolean;
   isOpen: boolean;
   isMinimized: boolean;
   isFullscreen: boolean;

@@ -11,6 +11,20 @@ export const AVAILABLE_TOOLS: Tool[] = [
     }
   },
   {
+    name: 'edit_window',
+    description: 'Edit an existing window by id or title, updating its title and/or content.',
+    parameters: {
+      type: 'object',
+      properties: {
+        windowId: { type: 'string', description: 'The window id to edit' },
+        titleMatch: { type: 'string', description: 'Case-insensitive title to match an existing window' },
+        newTitle: { type: 'string', description: 'New title to set' },
+        newContent: { type: 'string', description: 'New content to set' }
+      },
+      required: []
+    }
+  },
+  {
     name: 'open_window',
     description: 'Opens a new popup window with specified type and context. Use this for creating, opening, showing, or displaying a window. Education types supported: lesson, quiz, hint, explainer.',
     parameters: {

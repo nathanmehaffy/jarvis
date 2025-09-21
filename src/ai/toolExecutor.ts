@@ -52,6 +52,10 @@ export class ToolExecutor {
         case 'organize_windows':
           result = await this.executeOrganizeWindows(task);
           break;
+
+        case 'edit_window':
+          result = await this.executeEditWindow(task, uiContext);
+          break;
         
         default:
           throw new Error(`Unknown tool: ${task.tool}`);
@@ -234,6 +238,52 @@ export class ToolExecutor {
       timestamp: Date.now()
     };
     eventBus.emit('ai:tool_call_completed', { task, tool: 'organize_windows', result });
+    return result;
+  }
+
+  private async executeEditWindow(task: Task, uiContext?: any): Promise<ExecutionResult> {
+    const params = task.parameters as any; // EditWindowParams-like
+    eventBus.emit('ai:tool_call_started', { task, tool: 'edit_window', params });
+
+    // Resolve target by id or title match
+    let targetWindowId = params.windowId as string | undefined;
+    if (!targetWindowId && params.titleMatch) {
+      const windows: Array<{ id: string; title: string }>
+        = Array.isArray(uiContext?.windows) ? uiContext.windows : [];
+      const matchLower = String(params.titleMatch).toLowerCase();
+      const found = windows.find(w => String(w.title || '').toLowerCase() === matchLower);
+      targetWindowId = found?.id;
+    }
+
+    if (!targetWindowId && !params.titleMatch) {
+      throw new Error('edit_window requires windowId or titleMatch');
+    }
+
+    // Emit UI update
+    const updateData = {
+      windowId: targetWindowId,
+      titleMatch: !targetWindowId ? String(params.titleMatch || '') : undefined,
+      newTitle: typeof params.newTitle === 'string' ? params.newTitle : undefined,
+      newContent: typeof params.newContent === 'string' ? params.newContent : undefined,
+      timestamp: Date.now()
+    };
+
+    eventBus.emit('ui:update_window', updateData);
+
+    // Worker forward if needed
+    try {
+      if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
+        (self as any).postMessage({ type: 'UI_UPDATE_WINDOW', data: updateData });
+      }
+    } catch (_) {}
+
+    const result = {
+      taskId: task.id,
+      success: true,
+      result: { updated: true, targetWindowId, viaTitle: !targetWindowId && !!params.titleMatch },
+      timestamp: Date.now()
+    };
+    eventBus.emit('ai:tool_call_completed', { task, tool: 'edit_window', result });
     return result;
   }
 
