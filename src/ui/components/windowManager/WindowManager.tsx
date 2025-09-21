@@ -28,10 +28,17 @@ export interface WindowManagerRef {
   createCategory: (categoryName: string) => void;
   deleteCategory: (categoryName: string) => void;
   getAllCategories: () => string[];
+  getCategoryColors: () => Record<string, string>;
   // Window assignment to categories
   assignWindowToCategory: (windowId: string, categoryName: string) => void;
   removeWindowFromCategory: (windowId: string) => void;
   getAvailableGroups: () => string[]; // Keep for backward compatibility
+  collapseCategory: (categoryName: string) => void;
+  expandCategory: (categoryName: string) => void;
+  toggleCategoryCollapse: (categoryName: string) => void;
+  isCategoryCollapsed: (categoryName: string) => boolean;
+  getCollapsedCategories: () => string[];
+  organizeCategory: (categoryName: string) => void;
 }
 
 // Color palette for groups
@@ -98,7 +105,8 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
   const [state, setState] = useState<WindowManagerState>({
     windows: [],
     activeWindowId: null,
-    nextZIndex: 10
+    nextZIndex: 10,
+    collapsedCategories: []
   });
   
   // Separate state for managing categories
@@ -549,6 +557,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
 
       const inferredTitle = inferTitleFromContent(windowData.content, windowData.title);
 
+      const categoryCollapsed = (prev.collapsedCategories || []).includes(windowData.group || '');
       const newWindow = {
         ...windowData,
         title: windowData.title || inferredTitle,
@@ -557,7 +566,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         y: optimalPosition.y,
         width: size.width,
         height: size.height,
-        isOpen: true,
+        isOpen: !categoryCollapsed,
         isFullscreen: false,
         zIndex: prev.nextZIndex,
         animationState: 'opening' as const,
@@ -570,9 +579,9 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         windows: [
           ...currentWindows,
           newWindow
-        ],
-        activeWindowId: windowData.id,
-        nextZIndex: prev.nextZIndex + 1
+      ],
+      activeWindowId: windowData.id,
+      nextZIndex: prev.nextZIndex + 1
       };
 
       // Auto-minimize older windows if too many visible
@@ -650,11 +659,11 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
     }));
     // After animation completes, remove the window
     setTimeout(() => {
-      setState(prev => ({
-        ...prev,
-        windows: prev.windows.filter(w => w.id !== windowId),
-        activeWindowId: prev.activeWindowId === windowId ? null : prev.activeWindowId
-      }));
+    setState(prev => ({
+      ...prev,
+      windows: prev.windows.filter(w => w.id !== windowId),
+      activeWindowId: prev.activeWindowId === windowId ? null : prev.activeWindowId
+    }));
 
       // Emit event after window is removed
       setTimeout(() => {
@@ -736,6 +745,10 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
     return [...categories];
   };
 
+  const getCategoryColors = (): Record<string, string> => {
+    return { ...categoryColors };
+  };
+
   const assignWindowToCategory = (windowId: string, categoryName: string) => {
     if (!categories.includes(categoryName)) {
       console.warn(`Category "${categoryName}" does not exist. Create it first.`);
@@ -748,7 +761,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
       ...prev,
       windows: prev.windows.map(w =>
         w.id === windowId
-          ? { ...w, group: categoryName, groupColor }
+          ? { ...w, group: categoryName, groupColor, isOpen: !(prev.collapsedCategories || []).includes(categoryName) }
           : w
       )
     }));
@@ -778,6 +791,97 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
       }
     });
     return Array.from(groups).sort();
+  };
+
+  // Category collapsing/expanding
+  const collapseCategory = (categoryName: string) => {
+    setState(prev => {
+      const collapsed = new Set(prev.collapsedCategories || []);
+      collapsed.add(categoryName);
+      return {
+        ...prev,
+        collapsedCategories: Array.from(collapsed),
+        windows: prev.windows.map(w =>
+          w.group === categoryName ? { ...w, isOpen: false } : w
+        )
+      };
+    });
+  };
+
+  const expandCategory = (categoryName: string) => {
+    setState(prev => {
+      const collapsed = new Set(prev.collapsedCategories || []);
+      collapsed.delete(categoryName);
+      return {
+        ...prev,
+        collapsedCategories: Array.from(collapsed),
+        windows: prev.windows.map(w =>
+          w.group === categoryName ? { ...w, isOpen: true } : w
+        )
+      };
+    });
+  };
+
+  const toggleCategoryCollapse = (categoryName: string) => {
+    setState(prev => {
+      const collapsed = new Set(prev.collapsedCategories || []);
+      const willCollapse = !collapsed.has(categoryName);
+      if (willCollapse) {
+        collapsed.add(categoryName);
+      } else {
+        collapsed.delete(categoryName);
+      }
+      return {
+        ...prev,
+        collapsedCategories: Array.from(collapsed),
+        windows: prev.windows.map(w =>
+          w.group === categoryName ? { ...w, isOpen: !willCollapse } : w
+        )
+      };
+    });
+  };
+
+  const isCategoryCollapsed = (categoryName: string): boolean => {
+    return (state.collapsedCategories || []).includes(categoryName);
+  };
+
+  const getCollapsedCategories = (): string[] => {
+    return [...(state.collapsedCategories || [])];
+  };
+
+  const organizeCategory = (categoryName: string) => {
+    // Reuse organize logic scoped to one category
+    const windows = state.windows.filter(w => w.group === categoryName);
+    if (windows.length === 0) return;
+
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 1080;
+    const margin = 5;
+    const maxRightEdge = viewportWidth * 0.95;
+    const availableWidth = maxRightEdge - margin * 2;
+    const availableHeight = viewportHeight - margin * 2;
+
+    // Simple grid placement for the category
+    const cols = Math.ceil(Math.sqrt(windows.length));
+    const rows = Math.ceil(windows.length / cols);
+    const cellWidth = Math.floor(availableWidth / cols) - margin * 2;
+    const cellHeight = Math.floor(availableHeight / rows) - margin * 2;
+
+    const updated: Record<string, { x: number; y: number }> = {};
+    windows.forEach((w, idx) => {
+      const r = Math.floor(idx / cols);
+      const c = idx % cols;
+      const x = margin + c * (cellWidth + margin);
+      const y = margin + r * (cellHeight + margin);
+      updated[w.id] = { x, y };
+    });
+
+    setState(prev => ({
+      ...prev,
+      windows: prev.windows.map(w =>
+        updated[w.id] ? { ...w, x: updated[w.id].x, y: updated[w.id].y } : w
+      )
+    }));
   };
 
   const focusWindow = (windowId: string) => {
@@ -839,9 +943,16 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
     createCategory,
     deleteCategory,
     getAllCategories,
+    getCategoryColors,
     assignWindowToCategory,
     removeWindowFromCategory,
-    getAvailableGroups
+    getAvailableGroups,
+    collapseCategory,
+    expandCategory,
+    toggleCategoryCollapse,
+    isCategoryCollapsed,
+    getCollapsedCategories,
+    organizeCategory
   }));
 
   useEffect(() => {
@@ -1140,7 +1251,7 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
       {/* Connections feature removed */}
 
       {/* Render Windows */}
-      {state.windows.map(window => {
+      {state.windows.filter(w => w.isOpen).map(window => {
         const WindowComponent = window.component;
         return (
           <Window
