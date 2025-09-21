@@ -2,12 +2,40 @@
 
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import 'katex/dist/katex.min.css';
 
 export function SearchResultsWindow({ content }: { content: string }) {
   return (
-    <div className="p-4 overflow-auto h-full bg-white/5 rounded-lg">
+    <div className="p-4 h-full bg-white/5 rounded-lg">
       <div className="prose prose-invert prose-sm max-w-none">
         <ReactMarkdown
+          remarkPlugins={[remarkMath, remarkGfm]}
+          rehypePlugins={[
+            rehypeRaw,
+            [rehypeSanitize, {
+              ...defaultSchema,
+              tagNames: [
+                ...(defaultSchema.tagNames || []),
+                // KaTeX & MathML
+                'span','div','math','semantics','mrow','mi','mo','mn','mfrac','msup','msub','msubsup','mtable','mtr','mtd','mspace','annotation',
+                // Rich content
+                'img','sup','sub','table','thead','tbody','tr','td','th'
+              ],
+              attributes: {
+                ...(defaultSchema.attributes || {}),
+                '*': ['className','style','aria-hidden','aria-label'],
+                img: ['src','alt','title','width','height','loading','decoding'],
+                td: ['colspan','rowspan'],
+                th: ['colspan','rowspan']
+              }
+            }],
+            rehypeKatex
+          ]}
           components={{
             h1: ({ children }) => (
               <h1 className="text-xl font-bold text-white mb-4 mt-2 first:mt-0">{children}</h1>
@@ -51,6 +79,23 @@ export function SearchResultsWindow({ content }: { content: string }) {
                 {children}
               </pre>
             ),
+            table: ({ children }) => (
+              <div className="overflow-x-auto my-4">
+                <table className="min-w-full border border-gray-700 rounded-lg">
+                  {children}
+                </table>
+              </div>
+            ),
+            th: ({ children }) => (
+              <th className="bg-gray-800 border border-gray-700 px-3 py-2 text-left text-white/90 font-semibold">
+                {children}
+              </th>
+            ),
+            td: ({ children }) => (
+              <td className="border border-gray-700 px-3 py-2 text-gray-200">
+                {children}
+              </td>
+            ),
             a: ({ children, href }) => (
               <a
                 href={href}
@@ -61,6 +106,9 @@ export function SearchResultsWindow({ content }: { content: string }) {
                 {children}
               </a>
             ),
+            img: ({ src, alt }) => (
+              <img src={src || ''} alt={alt || ''} loading="lazy" decoding="async" className="rounded-md border border-gray-700 my-3 max-w-full h-auto" />
+            )
           }}
         >
           {content}

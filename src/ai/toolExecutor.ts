@@ -104,6 +104,9 @@ export class ToolExecutor {
         case 'edit_window':
           result = await this.executeEditWindow(task, uiContext);
           break;
+        case 'show_integral_visual':
+          result = await this.executeShowIntegralVisual(task);
+          break;
         default:
           console.error('⚠️ [ToolExecutor] Unknown tool requested', { tool: task.tool });
           throw new Error(`Unknown tool: ${task.tool}`);
@@ -554,6 +557,42 @@ export class ToolExecutor {
       timestamp: Date.now()
     };
     eventBus.emit('ai:tool_call_completed', { task, tool: 'edit_window', result });
+    return result;
+  }
+
+  private async executeShowIntegralVisual(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as any;
+    eventBus.emit('ai:tool_call_started', { task, tool: 'show_integral_visual', params });
+
+    const windowId = this.generateWindowId();
+    const windowData = {
+      id: windowId,
+      type: 'math-visual',
+      title: params?.title || `Visual: ∫ ${String(params?.expression || '')} d${String(params?.variable || 'x')}`,
+      position: { x: 120, y: 120 },
+      size: { width: 860, height: 600 },
+      expression: params?.expression,
+      variable: params?.variable ?? 'x',
+      lower: params?.lower,
+      upper: params?.upper,
+      samples: params?.samples ?? 200,
+      timestamp: Date.now()
+    } as any;
+
+    eventBus.emit('ui:open_window', windowData);
+    try {
+      if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
+        (self as any).postMessage({ type: 'UI_OPEN_WINDOW', data: windowData });
+      }
+    } catch (_) {}
+
+    const result = {
+      taskId: task.id,
+      success: true,
+      result: { windowId, type: 'math-visual' },
+      timestamp: Date.now()
+    };
+    eventBus.emit('ai:tool_call_completed', { task, tool: 'show_integral_visual', result });
     return result;
   }
 

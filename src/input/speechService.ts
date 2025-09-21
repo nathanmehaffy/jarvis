@@ -36,6 +36,8 @@ export class SpeechTranscriptionService {
   private isSupported = false;
   private isInitialized = false;
   private lastFinalCumulative = '';
+  private micPrefetched = false;
+  private audioRecoverAttempted = false;
 
   constructor() {
     // Don't check support in constructor - do it during initialization
@@ -52,6 +54,23 @@ export class SpeechTranscriptionService {
     if (!this.isSupported) {
       console.warn('Speech recognition not supported in this browser');
       eventBus.emit('speech:unsupported');
+    }
+  }
+
+  private async prefetchMicAccess(): Promise<void> {
+    if (this.micPrefetched) return;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // immediately stop to release device
+        stream.getTracks().forEach(t => t.stop());
+        this.micPrefetched = true;
+        this.audioRecoverAttempted = false;
+        eventBus.emit('speech:mic_ready');
+      }
+    } catch (err) {
+      // swallow; user may reject, we'll surface via onerror path
+      eventBus.emit('speech:mic_denied', err);
     }
   }
 
@@ -163,11 +182,39 @@ export class SpeechTranscriptionService {
     };
 
     this.recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      console.error('Speech recognition error:', event.error);
+      console.warn('Speech recognition error:', event.error);
 
       // Don't emit error for no-speech since we want continuous listening through silence
       if (event.error !== 'no-speech') {
         eventBus.emit('speech:error', event.error);
+      }
+
+      // Handle missing audio device / permission
+      if (event.error === 'audio-capture') {
+        // try a one-time recovery by prompting for mic access, then restarting
+        if (!this.audioRecoverAttempted) {
+          this.audioRecoverAttempted = true;
+          if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+              try {
+                stream.getTracks().forEach(t => t.stop());
+                this.micPrefetched = true;
+                // restart once
+                if (this.recognition && !this.isListening) {
+                  this.recognition.start();
+                  this.isListening = true;
+                  eventBus.emit('speech:restarted');
+                }
+              } catch {}
+            }).catch(err => {
+              eventBus.emit('speech:mic_denied', err);
+            });
+          }
+        } else {
+          // already attempted; stop trying to avoid loops
+          this.isListening = false;
+        }
+        return;
       }
 
       // Handle fatal errors by stopping completely
@@ -184,6 +231,8 @@ export class SpeechTranscriptionService {
     }
 
     try {
+      // proactively request mic once if not already
+      void this.prefetchMicAccess();
       this.recognition.start();
       return true;
     } catch (error) {
