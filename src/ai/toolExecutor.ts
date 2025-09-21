@@ -104,6 +104,28 @@ export class ToolExecutor {
         case 'edit_window':
           result = await this.executeEditWindow(task, uiContext);
           break;
+
+        case 'open_webview':
+          result = await this.executeOpenWebView(task);
+          break;
+        case 'summarize_article':
+          result = await this.executeSummarizeArticle(task);
+          break;
+        case 'open_search_result':
+          result = await this.executeOpenSearchResult(task, uiContext);
+          break;
+        case 'analyze_pdf':
+          result = await this.executeAnalyzePdf(task);
+          break;
+        case 'create_task':
+          result = await this.executeCreateTask(task);
+          break;
+        case 'view_tasks':
+          result = await this.executeViewTasks(task);
+          break;
+        case 'set_reminder':
+          result = await this.executeSetReminder(task);
+          break;
         default:
           console.error('⚠️ [ToolExecutor] Unknown tool requested', { tool: task.tool });
           throw new Error(`Unknown tool: ${task.tool}`);
@@ -550,6 +572,235 @@ export class ToolExecutor {
     return result;
   }
 
+
+  private async executeOpenWebView(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as { url: string; title?: string };
+    if (!params.url) throw new Error('open_webview requires a URL');
+
+    console.log('🌐 [ToolExecutor] executeOpenWebView STARTED', {
+      taskId: task.id,
+      params: params,
+      timestamp: new Date().toISOString()
+    });
+
+    eventBus.emit('ai:tool_call_started', { task, tool: 'open_webview', params });
+
+    const windowId = this.generateWindowId();
+    const windowData = {
+      id: windowId,
+      type: 'webview',
+      title: params.title || params.url,
+      // The 'content' will be the URL, which the WindowManager will use to render an iframe
+      content: params.url,
+      position: { x: 100, y: 100 },
+      size: { width: 800, height: 600 },
+      timestamp: Date.now()
+    };
+
+    console.log('🎨 [ToolExecutor] WebView window data prepared', {
+      windowData: windowData,
+      eventsToEmit: ['ui:open_window', 'window:opened'],
+      timestamp: new Date().toISOString()
+    });
+
+    eventBus.emit('ui:open_window', windowData);
+    console.log('📢 [ToolExecutor] Emitted ui:open_window event', { windowData });
+
+    // Bridge to main thread - THIS IS THE KEY FIX!
+    try {
+      if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
+        (self as any).postMessage({ type: 'UI_OPEN_WINDOW', data: windowData });
+        console.log('🌉 [ToolExecutor] Posted UI_OPEN_WINDOW message to main thread', { windowData });
+      }
+    } catch (error) {
+      console.error('❌ [ToolExecutor] Failed to post message to main thread', { error });
+    }
+
+    // Also emit a general window event
+    eventBus.emit('window:opened', windowData);
+    console.log('📢 [ToolExecutor] Emitted window:opened event', { windowData });
+
+    const result = {
+      taskId: task.id,
+      success: true,
+      result: { windowId },
+      timestamp: Date.now()
+    };
+
+    console.log('✅ [ToolExecutor] executeOpenWebView COMPLETED', {
+      taskId: task.id,
+      result: result,
+      timestamp: new Date().toISOString()
+    });
+
+    eventBus.emit('ai:tool_call_completed', { task, tool: 'open_webview', result });
+    return result;
+  }
+
+  private async executeSummarizeArticle(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as { url: string };
+    if (!params.url) throw new Error('summarize_article requires a URL');
+
+    eventBus.emit('system:output', { text: `Reading article: ${params.url}...\n` });
+    const resp = await fetch('/api/fetch-article', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: params.url })
+    });
+
+    if (!resp.ok) throw new Error(`Failed to fetch article (HTTP ${resp.status})`);
+    const article = await resp.json();
+
+    const summary = `**Summary of: [${article.title}](${article.url})**\n\n${article.textContent.substring(0, 1500)}...`;
+
+    const windowId = this.generateWindowId();
+    const windowData = {
+      id: windowId,
+      type: 'summary',
+      title: `Summary: ${article.title}`,
+      content: summary,
+      position: { x: 100, y: 100 },
+      size: { width: 700, height: 500 },
+      timestamp: Date.now()
+    };
+
+    eventBus.emit('ui:open_window', windowData);
+
+    // Bridge to main thread
+    try {
+      if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
+        (self as any).postMessage({ type: 'UI_OPEN_WINDOW', data: windowData });
+      }
+    } catch (error) {
+      console.error('❌ [ToolExecutor] Failed to post message to main thread', { error });
+    }
+
+    return { taskId: task.id, success: true, result: { windowId }, timestamp: Date.now() };
+  }
+
+  private async executeOpenSearchResult(task: Task, uiContext: any): Promise<ExecutionResult> {
+    const params = task.parameters as { index: number };
+    const index = Math.max(0, (params.index || 1) - 1);
+
+    const searchWindows = (uiContext?.windows || [])
+      .filter((w: any) => w.id.includes('search-results'))
+      .sort((a: any, b: any) => b.zIndex - a.zIndex);
+
+    if (searchWindows.length === 0) throw new Error('No recent search results found.');
+
+    const lastSearchWindow = searchWindows[0];
+    const content = lastSearchWindow.content || '';
+    const urls = Array.from(content.matchAll(/🔗 (https?:\/\/[^\s]+)/g)).map(m => (m as RegExpMatchArray)[1]).filter(Boolean);
+
+    if (urls.length <= index) throw new Error(`Result index ${index + 1} is out of bounds.`);
+
+    const urlToOpen = urls[index];
+    return this.executeOpenWebView({
+      ...task,
+      parameters: { url: urlToOpen, title: `Result ${index + 1}` }
+    });
+  }
+
+  private async executeAnalyzePdf(task: Task): Promise<ExecutionResult> {
+    // This tool's primary job is to trigger the UI to show a file picker.
+    const params = task.parameters as { prompt: string };
+    eventBus.emit('ui:request_pdf_upload', { prompt: params.prompt });
+    return { taskId: task.id, success: true, result: { message: 'PDF upload requested' }, timestamp: Date.now() };
+  }
+
+  private async executeCreateTask(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as { title: string; due?: string };
+    if (!params.title) throw new Error('create_task requires a title');
+
+    const taskData = { ...params, id: `task_${Date.now()}` };
+    eventBus.emit('tasks:create', taskData);
+
+    // Optionally open the tasks window to show confirmation
+    await this.executeViewTasks(task);
+
+    return { taskId: task.id, success: true, result: { taskId: taskData.id }, timestamp: Date.now() };
+  }
+
+  private async executeViewTasks(task: Task): Promise<ExecutionResult> {
+    const windowId = 'tasks-window'; // Use a singleton ID
+    const windowData = {
+      id: windowId,
+      type: 'tasks',
+      title: 'My Tasks',
+      position: { x: 100, y: 100 },
+      size: { width: 600, height: 500 },
+      timestamp: Date.now()
+    };
+
+    eventBus.emit('ui:open_window', windowData);
+
+    // Bridge to main thread
+    try {
+      if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
+        (self as any).postMessage({ type: 'UI_OPEN_WINDOW', data: windowData });
+      }
+    } catch (error) {
+      console.error('❌ [ToolExecutor] Failed to post message to main thread', { error });
+    }
+
+    return { taskId: task.id, success: true, result: { windowId }, timestamp: Date.now() };
+  }
+
+  private async executeSetReminder(task: Task): Promise<ExecutionResult> {
+    const params = task.parameters as { message: string; time: string };
+    if (!params.message || !params.time) throw new Error('set_reminder requires message and time');
+
+    // The worker will parse the time and schedule the notification
+    const parseDelay = (t: string): number | null => {
+        // This is a simple parser, a more robust library could be used
+        const now = Date.now();
+        const minutesMatch = t.match(/in (\d+) minutes?/i);
+        if (minutesMatch) return parseInt(minutesMatch[1], 10) * 60 * 1000;
+
+        const timeMatch = t.match(/at (\d{1,2}):(\d{2})\s?(am|pm)?/i);
+        if (timeMatch) {
+            let hour = parseInt(timeMatch[1], 10);
+            const minute = parseInt(timeMatch[2], 10);
+            const isPm = (timeMatch[3] || '').toLowerCase() === 'pm';
+            if (isPm && hour < 12) hour += 12;
+            if (!isPm && hour === 12) hour = 0; // Midnight case
+
+            const reminderDate = new Date();
+            reminderDate.setHours(hour, minute, 0, 0);
+            if (reminderDate.getTime() < now) reminderDate.setDate(reminderDate.getDate() + 1); // If time is in the past, schedule for tomorrow
+            return reminderDate.getTime() - now;
+        }
+        return null;
+    };
+
+    const delay = parseDelay(params.time);
+    if (delay === null) throw new Error(`Could not parse reminder time: "${params.time}"`);
+
+    setTimeout(() => {
+      const windowData = {
+        id: `reminder-${Date.now()}`,
+        type: 'notification',
+        title: 'Reminder',
+        content: params.message,
+        position: { x: 100, y: 100 },
+        size: { width: 400, height: 200 },
+        timestamp: Date.now()
+      };
+
+      eventBus.emit('ui:open_window', windowData);
+
+      // Bridge to main thread
+      try {
+        if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function' && typeof (globalThis as any).window === 'undefined') {
+          (self as any).postMessage({ type: 'UI_OPEN_WINDOW', data: windowData });
+        }
+      } catch (error) {
+        console.error('❌ [ToolExecutor] Failed to post message to main thread', { error });
+      }
+    }, delay);
+
+    return { taskId: task.id, success: true, result: { scheduledIn: `${delay}ms` }, timestamp: Date.now() };
+  }
 
   private generateWindowId(): string {
     return `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

@@ -108,6 +108,84 @@ export const AVAILABLE_TOOLS: Tool[] = [
       },
       required: ['query']
     }
+  },
+  {
+    name: 'open_webview',
+    description: 'Opens a sandboxed webview (iframe) to display a URL inside a window. Use this to show a webpage.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'URL to load in the webview' },
+        title: { type: 'string', description: 'Optional window title' }
+      },
+      required: ['url']
+    }
+  },
+  {
+    name: 'summarize_article',
+    description: 'Reads a URL, extracts the main content, and generates a concise bullet-point summary in a new window.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Article URL to read and summarize' }
+      },
+      required: ['url']
+    }
+  },
+  {
+    name: 'open_search_result',
+    description: 'Opens one of the links from the most recent search result. Use commands like "open the first link" or "show me the third result".',
+    parameters: {
+      type: 'object',
+      properties: {
+        index: { type: 'number', description: '1-based index of the search result to open (default 1)' }
+      },
+      required: ['index']
+    }
+  },
+  {
+    name: 'analyze_pdf',
+    description: 'Prompts the user to upload a PDF file, then analyzes and summarizes its content in a new window.',
+    parameters: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'A question or prompt about the PDF content, e.g., "Summarize this document."' }
+      },
+      required: ['prompt']
+    }
+  },
+  {
+    name: 'create_task',
+    description: 'Creates a new task in the task list. Use for reminders like "remind me to..." or "add a task to...".',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'The title or content of the task' },
+        due: { type: 'string', description: 'An optional due date or time in natural language (e.g., "tomorrow at 5pm")' }
+      },
+      required: ['title']
+    }
+  },
+  {
+    name: 'view_tasks',
+    description: 'Opens a window displaying the current list of tasks.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: 'set_reminder',
+    description: 'Schedules a one-time notification to appear at a future time.',
+    parameters: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: 'The reminder message to display' },
+        time: { type: 'string', description: 'When to send the reminder, in natural language (e.g., "in 10 minutes", "at 3:30pm")' }
+      },
+      required: ['message', 'time']
+    }
   }
 ];
 

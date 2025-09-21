@@ -16,6 +16,7 @@ import { AnimatedBackground } from './components/background';
 import { ImageDropZone } from './components/imageDropZone';
 import { ImageViewer } from './components/imageViewer';
 import { DebugSidebar } from './components/debugSidebar';
+import { MarkdownText } from './components/markdownText';
 
 export function MainUI() {
   const windowManagerRef = useRef<WindowManagerRef>(null);
@@ -72,6 +73,43 @@ export function MainUI() {
             return newSet;
           });
         }
+      }),
+      eventBus.on('ui:request_pdf_upload', async (data: { prompt: string }) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.pdf';
+        input.onchange = async (e) => {
+          const file = (e.target as HTMLInputElement).files?.[0];
+          if (!file) return;
+
+          eventBus.emit('system:output', { text: `Uploading and analyzing ${file.name}...\n` });
+
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('prompt', data.prompt);
+
+          try {
+            const resp = await fetch('/api/analyze-pdf', { method: 'POST', body: formData });
+            if (!resp.ok) throw new Error(`Analysis failed: HTTP ${resp.status}`);
+
+            const result = await resp.json();
+            windowManagerRef.current?.openWindow({
+              id: `pdf-summary-${Date.now()}`,
+              title: `Summary: ${file.name}`,
+              component: () => <div className="p-4 overflow-auto h-full"><MarkdownText>{result.summary}</MarkdownText></div>,
+              content: result.summary,
+              width: 700,
+              height: 500,
+              x: 0,
+              y: 0,
+              isMinimized: false,
+              isFullscreen: false
+            });
+          } catch (error) {
+            eventBus.emit('system:output', { text: `Error analyzing PDF: ${error instanceof Error ? error.message : String(error)}\n` });
+          }
+        };
+        input.click();
       })
     ];
     return () => { unsubs.forEach(u => u()); };

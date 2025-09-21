@@ -6,6 +6,8 @@ import { WindowData, WindowManagerState } from './windowManager.types';
 import { eventBus } from '@/lib/eventBus';
 import { SearchResultsWindow } from '../searchResults';
 import { MarkdownText } from '../markdownText';
+import { WebView } from '../webview/WebView';
+import { TasksWindow } from '../tasks/TasksWindow';
 // import { contentSimilarityAnalyzer } from '@/lib/contentSimilarity';
 
 interface WindowManagerProps {
@@ -602,10 +604,16 @@ export const WindowManager = forwardRef<WindowManagerRef, WindowManagerProps>(fu
         if (data?.type === 'search-results') {
           console.log('🔍 [WindowManager] Creating SearchResultsWindow component');
           component = () => <SearchResultsWindow content={content} />;
+        } else if (data?.type === 'webview') {
+          console.log('🌐 [WindowManager] Creating WebView component');
+          component = () => <WebView url={content} />;
+        } else if (data?.type === 'tasks') {
+          console.log('📋 [WindowManager] Creating TasksWindow component');
+          component = TasksWindow;
         } else {
           console.log('📄 [WindowManager] Creating generic window component');
           component = ({ content }: { content?: string }) => (
-            <div className="p-4">
+            <div className="p-4 overflow-auto h-full">
               <MarkdownText className="text-sm">
                 {String(content || '')}
               </MarkdownText>

@@ -43,6 +43,15 @@ export class TaskParser {
       '  * "Edit window \"Green Tomatoes\" to say I love green tomatoes" → edit_window { titleMatch: "Green Tomatoes", newContent: "I love green tomatoes" }',
       '  * "Edit window \"Budget\" title to Monthly Budget" → edit_window { titleMatch: "Budget", newTitle: "Monthly Budget" }',
       '  * "Edit window id abc123 set title Project Plan" → edit_window { windowId: "abc123", newTitle: "Project Plan" }',
+      '- Web browsing and content tools:',
+      '  * "summarize the article at example.com/news" → summarize_article { url: "http://example.com/news" }',
+      '  * "open the second link from my last search" → open_search_result { index: 2 }',
+      '  * "show me the page google.com" → open_webview { url: "https://google.com" }',
+      '- Task and reminder management:',
+      '  * "add a task to buy milk" → create_task { title: "buy milk" }',
+      '  * "remind me to check the oven in 15 minutes" → set_reminder { message: "check the oven", time: "in 15 minutes" }',
+      '  * "summarize this PDF about machine learning" → analyze_pdf { prompt: "Summarize this PDF about machine learning" }',
+      '  * "show my tasks" → view_tasks {}',
       '',
       'When editing windows, prefer matching by exact title (case-insensitive) when an id is not provided. Only include fields that are actually specified by the user.'
     ].join('\n');
