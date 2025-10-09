@@ -1,5 +1,8 @@
 import { NextRequest } from 'next/server';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     console.log('[API] /api/describe-image POST hit');
@@ -7,8 +10,10 @@ export async function POST(request: NextRequest) {
     const { image, mimeType, imageUrl, prompt } = body;
 
     if (!process.env.GEMINI_API_KEY) {
-      console.error('[API] Missing GEMINI_API_KEY environment variable');
-      return new Response(JSON.stringify({ error: 'Missing GEMINI_API_KEY' }), { status: 500 });
+      // Graceful fallback: return a simple description so UI flows continue working
+      const basicTitle = typeof imageUrl === 'string' ? imageUrl.split('/').pop() || 'Untitled image' : 'Untitled image';
+      const fallback = `[Image: ${basicTitle}] (Vision disabled - set GEMINI_API_KEY to enable detailed descriptions)`;
+      return Response.json({ description: fallback });
     }
 
     let imageData: string;

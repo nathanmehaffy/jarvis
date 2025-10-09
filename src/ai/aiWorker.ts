@@ -53,6 +53,13 @@ self.addEventListener('message', (event) => {
   const { type, data } = event.data;
   
   switch (type) {
+    case 'SET_BASE_ORIGIN':
+      try {
+        const origin = typeof data?.origin === 'string' ? data.origin : '';
+        (self as any).__BASE_ORIGIN__ = origin;
+        console.log('🌐 [AI Worker] Base origin set', { origin });
+      } catch {}
+      break;
     case 'SET_UI_CONTEXT':
       try { state.uiContext = data || {}; } catch {}
       break;

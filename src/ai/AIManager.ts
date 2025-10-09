@@ -271,6 +271,12 @@ export class AIManager {
       this.isInitialized = true;
       eventBus.emit('ai:initialized');
 
+      // Provide base origin to worker to construct absolute URLs when needed
+      try {
+        const origin = typeof window !== 'undefined' ? window.location.origin : '';
+        this.worker.postMessage({ type: 'SET_BASE_ORIGIN', data: { origin } });
+      } catch {}
+
       // Bridge: when input emits transcript updates, forward to worker for stateful processing
       eventBus.on('input:transcript_updated', (data: { transcript: string; pastTranscript?: string; currentDirective?: string }) => {
         try {

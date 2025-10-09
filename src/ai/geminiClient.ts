@@ -10,9 +10,14 @@ export class GeminiClient {
       // In a Web Worker, we need to use an absolute URL
       let baseUrl: string;
       try {
-        // Try to get the origin from the worker's location
-        if (typeof self !== 'undefined' && self.location) {
-          baseUrl = self.location.origin;
+        // Prefer an explicit base origin injected by the main thread (typed safely)
+        const g = globalThis as unknown as { __BASE_ORIGIN__?: string };
+        const injected = typeof g.__BASE_ORIGIN__ === 'string' ? g.__BASE_ORIGIN__ : '';
+        if (injected) {
+          baseUrl = injected;
+        } else if (typeof location !== 'undefined' && typeof location.origin === 'string') {
+          // Try to get the origin from the global location (works in workers and windows)
+          baseUrl = location.origin;
         } else {
           // Fallback to localhost for development
           baseUrl = 'http://localhost:3000';

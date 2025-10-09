@@ -72,13 +72,15 @@ export class ImageDescriptionService {
       });
 
       if (!response.ok) {
-        throw new Error(`API responded with status ${response.status}`);
+        // Surface a short, cacheable fallback description
+        console.warn('describe-image API returned non-OK', response.status);
+        return `[Image: ${imageName || 'Untitled image'}]`;
       }
 
       const data = await response.json();
 
       if (!data.description || typeof data.description !== 'string') {
-        throw new Error('Invalid response format from describe-image API');
+        return `[Image: ${imageName || 'Untitled image'}]`;
       }
 
       const description = data.description.trim().replace(/\s+/g, ' ');

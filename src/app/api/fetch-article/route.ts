@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   try {
