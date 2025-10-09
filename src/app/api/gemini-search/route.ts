@@ -1,5 +1,8 @@
 import { NextRequest } from 'next/server';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     console.log('[API] /api/gemini-search POST hit');
@@ -7,8 +10,9 @@ export async function POST(request: NextRequest) {
     const { query } = body;
 
     if (!process.env.GEMINI_API_KEY) {
-      console.error('[API] Missing GEMINI_API_KEY environment variable');
-      return new Response(JSON.stringify({ error: 'Missing GEMINI_API_KEY' }), { status: 500 });
+      // Graceful fallback to keep UI functional without external key
+      const fallback = `Search is unavailable (missing GEMINI_API_KEY).\n\n- Query: ${query || '(none)'}\n- To enable, set GEMINI_API_KEY in your environment.`;
+      return Response.json({ result: fallback });
     }
 
     if (!query || typeof query !== 'string') {

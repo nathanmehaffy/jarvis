@@ -1,7 +1,6 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
-import { eventBus } from '@/lib/eventBus';
+import { useEffect } from 'react';
 import { imageDescriptionService } from '@/ai/imageDescriptionService';
 
 import Image from 'next/image';
@@ -21,12 +20,15 @@ export function ImageViewer({ imageUrl, imageName, windowId }: ImageViewerProps)
   }, [imageUrl, imageName]);
 
   return (
-    <div className="w-full h-full bg-black flex items-center justify-center overflow-hidden">
+    <div className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden">
       <Image
         src={imageUrl}
         alt={imageName}
-        layout="fill"
-        objectFit="contain"
+        fill
+        sizes="100vw"
+        className="object-contain"
+        // Avoid optimizer for data URLs to prevent unnecessary processing
+        unoptimized={typeof imageUrl === 'string' && imageUrl.startsWith('data:')}
       />
     </div>
   );

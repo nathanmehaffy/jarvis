@@ -826,7 +826,22 @@ export class ToolExecutor {
 
     const lastSearchWindow = searchWindows[0];
     const content = lastSearchWindow.content || '';
-    const urls = Array.from(content.matchAll(/🔗 (https?:\/\/[^\s]+)/g)).map(m => (m as RegExpMatchArray)[1]).filter(Boolean);
+    // Extract URLs from multiple formats: lines starting with bullet/link, markdown [text](url), and raw http(s)
+    const urlSet = new Set<string>();
+    const addUrl = (u?: string) => { if (u && /^https?:\/\//i.test(u)) urlSet.add(u); };
+    // 1) Lines beginning with a link icon or bullet followed by URL
+    for (const m of content.matchAll(/(?:^|\n)\s*(?:[-*•]|🔗)\s*(https?:\/\/\S+)/g)) {
+      addUrl((m as RegExpMatchArray)[1]);
+    }
+    // 2) Markdown links [text](url)
+    for (const m of content.matchAll(/\((https?:\/\/[^)\s]+)\)/g)) {
+      addUrl((m as RegExpMatchArray)[1]);
+    }
+    // 3) Any raw URLs in text
+    for (const m of content.matchAll(/https?:\/\/[^\s)]+/g)) {
+      addUrl((m as RegExpMatchArray)[0]);
+    }
+    const urls = Array.from(urlSet);
 
     if (urls.length <= index) throw new Error(`Result index ${index + 1} is out of bounds.`);
 

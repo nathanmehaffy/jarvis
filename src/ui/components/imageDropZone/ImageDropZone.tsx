@@ -33,7 +33,7 @@ export function ImageDropZone({ onImageUpload, onMultipleImageUpload }: ImageDro
 
           if (response.ok) {
             const data = await response.json();
-            const description = data.result;
+            const description = data.description || data.result;
             console.log('[ImageDropZone] Received description:', description);
             eventBus.emit('system:message', { message: `Image analysis complete. Description: ${description}` });
           } else {

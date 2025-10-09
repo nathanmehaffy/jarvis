@@ -8,7 +8,6 @@ import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import 'katex/dist/katex.min.css';
-import Image from 'next/image';
 
 export function SearchResultsWindow({ content }: { content: string }) {
   return (
